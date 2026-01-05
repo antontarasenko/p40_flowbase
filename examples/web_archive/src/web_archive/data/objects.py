@@ -1,0 +1,709 @@
+"""
+MIT License
+
+Copyright (c) 2025 Anton Tarasenko
+"""
+
+import json
+import re
+import uuid
+from datetime import (
+    UTC,
+    datetime,
+)
+from enum import Enum
+from typing import (
+    Any,
+    List,
+    Optional,
+)
+
+import pandas as pd
+import pydantic as pyd
+from sqlmodel import (
+    Field,
+    SQLModel,
+)
+
+import p40_flowbase as fb
+
+
+class URLVersions(Enum):
+    UNIS_1 = fb.DataObjectVersion(
+        id="unis_1",
+        name="University URLs (Group 1)",
+        description="URLs from manually shortlisted universities (Group 1)",
+    )
+    UNIS_1_TEST = fb.DataObjectVersion(
+        id="unis_1_test",
+        name="Test university (Group 1)",
+        description="URLs for one university from University URLs (Group 1)",
+    )
+
+
+class URLSampleStruct(pyd.BaseModel):
+    org: str = pyd.Field(
+        title="Organization",
+        description="Organization identifier (usually domain name)",
+        json_schema_extra={"units": "text"},
+    )
+    url: str = pyd.Field(
+        title="URL",
+        description="HTTP/HTTPS URL to one of the pages that belong to the organization",
+        json_schema_extra={"units": "text"},
+    )
+
+
+class URLSample(fb.TableDataObject):
+    id: str = "url_sample"
+    description: str = "Sample of organization URLs for web archive retrieval"
+    supported_versions = tuple(URLVersions)
+    schema = URLSampleStruct
+
+    def _make_default(self):
+        """Create sample table with URLs for the specified version."""
+        if self.version == URLVersions.UNIS_1:
+            urls = [
+                {"org": "asu.edu", "url": "https://asurc.atlassian.net/wiki/spaces/RC/overview"},
+                {"org": "asu.edu", "url": "https://cores.research.asu.edu/research-computing/user-guide"},
+                {"org": "clemson.edu", "url": "https://docs.rcd.clemson.edu/palmetto/compute/hardware/"},
+                {"org": "clemson.edu", "url": "https://www.palmetto.clemson.edu/palmetto/userguide_palmetto_overview.html"},
+                {"org": "iastate.edu", "url": "https://www.hpc.iastate.edu/systems"},
+                {"org": "uvm.edu", "url": "https://www.uvm.edu/vacc/cluster-specs"},
+                {"org": "virginia.edu", "url": "http://arcs.virginia.edu/rivanna"},
+                {"org": "virginia.edu", "url": "https://www.rc.virginia.edu/userinfo/hpc/"},
+                {"org": "virginia.edu", "url": "https://www.rc.virginia.edu/userinfo/rivanna/overview/"},
+            ]
+        elif self.version == URLVersions.UNIS_1_TEST:
+            urls = [
+                {"org": "iastate.edu", "url": "https://www.hpc.iastate.edu/systems"},
+            ]
+        else:
+            raise ValueError(f"Unknown version '{self.version.value.id}'")
+
+        df = pd.DataFrame(urls)
+        df = df.convert_dtypes(dtype_backend="pyarrow")
+        df.to_parquet(self.path_to_format(fb.TableFormat.PARQUET), index=False)
+
+
+class WMSnapshotURLsHTTPRequestGroup(SQLModel, table=True):
+    __tablename__ = "wm_snapshot_urls_http_request_groups"
+    __table_args__ = {"extend_existing": True}
+
+    http_request_group_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_by_class: str
+
+
+class WMSnapshotURLsHTTPRequestExtra(SQLModel, table=True):
+    __tablename__ = "wm_snapshot_urls_http_request_extra"
+    __table_args__ = {"extend_existing": True}
+
+    http_request_extra_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    org: str
+    url: str
+    year: int
+
+
+class WMSnapshotURLsDB(fb.HTTPRequestsDBMixin, fb.DBDataObject):
+    id: str = "wm_snapshot_urls_db"
+    description: str = "Database for logging and executing HTTP requests to Wayback Machine Availability API"
+    supported_versions = tuple(URLVersions)
+    schema: List[Any] = [
+        WMSnapshotURLsHTTPRequestGroup,
+        WMSnapshotURLsHTTPRequestExtra,
+        fb.HTTPRequest,
+    ]
+
+    async def _populate_http_requests(self) -> uuid.UUID:
+        """Populate database with Wayback Machine Availability API requests."""
+        sample_obj = URLSample(version=self.version)
+
+        if not sample_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+            sample_obj.make(replace=False)
+
+        urls_df = sample_obj.pdf
+
+        headers = json.dumps({"User-Agent": "research-project/1.0"})
+
+        group = WMSnapshotURLsHTTPRequestGroup(created_by_class=self.__class__.__name__)
+
+        async with self.session_factory() as session:
+            session.add(group)
+            await session.commit()
+            await session.refresh(group)
+
+        timestamps = [f"{year}0701000000" for year in range(2015, 2026)]
+
+        availability_requests = []
+        for _, row in urls_df.iterrows():
+            org = row["org"]
+            url = row["url"]
+
+            for timestamp in timestamps:
+                year = int(timestamp[:4])
+                availability_url = f"https://archive.org/wayback/available?url={url}&timestamp={timestamp}"
+
+                extra = WMSnapshotURLsHTTPRequestExtra(
+                    org=org,
+                    url=url,
+                    year=year,
+                )
+
+                async with self.session_factory() as session:
+                    session.add(extra)
+                    await session.commit()
+                    await session.refresh(extra)
+
+                availability_requests.append({
+                    "request_url": availability_url,
+                    "request_method": "GET",
+                    "request_headers": headers,
+                    "http_request_group_id": group.http_request_group_id,
+                    "http_request_extra_id": extra.http_request_extra_id,
+                })
+
+        await self._add_http_requests(availability_requests)
+
+        return group.http_request_group_id
+
+
+class WMSnapshotURLsStruct(pyd.BaseModel):
+    org: str = pyd.Field(
+        title="Organization",
+        description="Organization for which snapshot was requested",
+        json_schema_extra={"units": "text"},
+    )
+    url: str = pyd.Field(
+        title="URL",
+        description="URL for which snapshot was requested",
+        json_schema_extra={"units": "text"},
+    )
+    year: int = pyd.Field(
+        title="Year",
+        description="Year for which snapshot was requested",
+        json_schema_extra={"units": "year"},
+    )
+    snapshot_url: Optional[str] = pyd.Field(
+        title="Snapshot URL",
+        description="URL of the snapshot returned by Availability API",
+        json_schema_extra={"units": "text"},
+    )
+
+
+class WMSnapshotURLs(fb.TableDataObject):
+    id: str = "wm_snapshot_urls"
+    description: str = "Wayback Machine snapshot URLs extracted from Availability API responses"
+    supported_versions = tuple(URLVersions)
+    schema = WMSnapshotURLsStruct
+
+    def _make_default(self):
+        """Extract snapshot URLs from Wayback Machine Availability API responses."""
+        import asyncio
+
+        asyncio.run(self._extract_from_db())
+
+    async def _extract_from_db(self):
+        """Extract snapshot URLs from database."""
+        from sqlmodel import select
+
+        db = WMSnapshotURLsDB(version=self.version)
+
+        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+            await db.make_async()
+
+        async with db.session_factory() as session:
+            statement = (
+                select(fb.HTTPRequest, WMSnapshotURLsHTTPRequestExtra)
+                .join(
+                    WMSnapshotURLsHTTPRequestExtra,
+                    fb.HTTPRequest.http_request_extra_id == WMSnapshotURLsHTTPRequestExtra.http_request_extra_id,
+                )
+                .where(
+                    fb.HTTPRequest.response_status == 200,
+                    fb.HTTPRequest.requested_at_utc.is_not(None),
+                )
+                .order_by(fb.HTTPRequest.requested_at_utc.desc())
+            )
+            result = await session.exec(statement)
+            rows = result.all()
+
+        records = []
+        seen_keys = set()
+
+        for http_request, extra in rows:
+            key = (extra.org, extra.url, extra.year)
+
+            if key in seen_keys:
+                continue
+
+            seen_keys.add(key)
+
+            snapshot_url = None
+            if http_request.response_body_text:
+                try:
+                    response_data = json.loads(http_request.response_body_text)
+                    archived_snapshots = response_data.get("archived_snapshots", {})
+                    closest = archived_snapshots.get("closest", {})
+                    snapshot_url = closest.get("url")
+                except (json.JSONDecodeError, KeyError):
+                    pass
+
+            records.append({
+                "org": extra.org,
+                "url": extra.url,
+                "year": extra.year,
+                "snapshot_url": snapshot_url,
+            })
+
+        df = pd.DataFrame(records)
+        df = df.convert_dtypes(dtype_backend="pyarrow")
+        df.to_parquet(self.path_to_format(fb.TableFormat.PARQUET), index=False)
+
+        await db.close()
+
+
+class WMSnapshotContentHTTPRequestGroup(SQLModel, table=True):
+    __tablename__ = "wm_snapshot_content_http_request_groups"
+    __table_args__ = {"extend_existing": True}
+
+    http_request_group_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_by_class: str
+
+
+class WMSnapshotContentHTTPRequestExtra(SQLModel, table=True):
+    __tablename__ = "wm_snapshot_content_http_request_extra"
+    __table_args__ = {"extend_existing": True}
+
+    http_request_extra_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    org: str
+    url: str
+    year: int
+    snapshot_url: str
+
+
+class WMSnapshotContentDB(fb.HTTPRequestsDBMixin, fb.DBDataObject):
+    id: str = "wm_snapshot_content_db"
+    description: str = "Database for logging and executing HTTP requests to retrieve Wayback Machine snapshot content"
+    supported_versions = tuple(URLVersions)
+    schema: List[Any] = [
+        WMSnapshotContentHTTPRequestGroup,
+        WMSnapshotContentHTTPRequestExtra,
+        fb.HTTPRequest,
+    ]
+
+    async def _populate_http_requests(self) -> uuid.UUID:
+        """Populate database with snapshot content retrieval requests."""
+        snapshots_obj = WMSnapshotURLs(version=self.version)
+
+        if not snapshots_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+            snapshots_obj.make(replace=False)
+
+        snapshots_df = snapshots_obj.pdf
+
+        snapshots_df = snapshots_df[snapshots_df["snapshot_url"].notna()]
+
+        headers = json.dumps({"User-Agent": "research-project/1.0"})
+
+        group = WMSnapshotContentHTTPRequestGroup(created_by_class=self.__class__.__name__)
+
+        async with self.session_factory() as session:
+            session.add(group)
+            await session.commit()
+            await session.refresh(group)
+
+        content_requests = []
+        for _, row in snapshots_df.iterrows():
+            org = row["org"]
+            url = row["url"]
+            year = int(row["year"])
+            snapshot_url = row["snapshot_url"]
+
+            modified_url = snapshot_url.replace("/web/", "/web/", 1)
+            match = re.match(r"(https://web\.archive\.org/web/\d{14})(/.+)", modified_url)
+            if match:
+                modified_url = f"{match.group(1)}id_{match.group(2)}"
+
+            extra = WMSnapshotContentHTTPRequestExtra(
+                org=org,
+                url=url,
+                year=year,
+                snapshot_url=snapshot_url,
+            )
+
+            async with self.session_factory() as session:
+                session.add(extra)
+                await session.commit()
+                await session.refresh(extra)
+
+            content_requests.append({
+                "request_url": modified_url,
+                "request_method": "GET",
+                "request_headers": headers,
+                "http_request_group_id": group.http_request_group_id,
+                "http_request_extra_id": extra.http_request_extra_id,
+            })
+
+        await self._add_http_requests(content_requests)
+
+        return group.http_request_group_id
+
+
+class WMSnapshotContentStruct(pyd.BaseModel):
+    org: str = pyd.Field(
+        title="Organization",
+        description="Organization for which snapshot was retrieved",
+        json_schema_extra={"units": "text"},
+    )
+    url: str = pyd.Field(
+        title="URL",
+        description="URL for which snapshot was retrieved",
+        json_schema_extra={"units": "text"},
+    )
+    year: int = pyd.Field(
+        title="Year",
+        description="Year for which snapshot was retrieved",
+        json_schema_extra={"units": "year"},
+    )
+    snapshot_url: str = pyd.Field(
+        title="Snapshot URL",
+        description="URL of the snapshot",
+        json_schema_extra={"units": "text"},
+    )
+    snapshot_content: Optional[str] = pyd.Field(
+        title="Snapshot Content",
+        description="HTML content of the snapshot",
+        json_schema_extra={"units": "text"},
+    )
+
+
+class WMSnapshotContent(fb.TableDataObject):
+    id: str = "wm_snapshot_content"
+    description: str = "Wayback Machine snapshot content retrieved from archived pages"
+    supported_versions = tuple(URLVersions)
+    schema = WMSnapshotContentStruct
+
+    def _make_default(self):
+        """Extract snapshot content from HTTP responses."""
+        import asyncio
+
+        asyncio.run(self._extract_from_db())
+
+    async def _extract_from_db(self):
+        """Extract snapshot content from database."""
+        from sqlmodel import select
+
+        db = WMSnapshotContentDB(version=self.version)
+
+        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+            await db.make_async()
+
+        async with db.session_factory() as session:
+            statement = (
+                select(fb.HTTPRequest, WMSnapshotContentHTTPRequestExtra)
+                .join(
+                    WMSnapshotContentHTTPRequestExtra,
+                    fb.HTTPRequest.http_request_extra_id == WMSnapshotContentHTTPRequestExtra.http_request_extra_id,
+                )
+                .where(fb.HTTPRequest.requested_at_utc.is_not(None))
+                .order_by(fb.HTTPRequest.requested_at_utc.desc())
+            )
+            result = await session.exec(statement)
+            rows = result.all()
+
+        records = []
+        seen_keys = set()
+
+        for http_request, extra in rows:
+            key = (extra.org, extra.url, extra.year, extra.snapshot_url)
+
+            if key in seen_keys:
+                continue
+
+            seen_keys.add(key)
+
+            snapshot_content = None
+            if http_request.response_status == 200 and http_request.response_body_text:
+                snapshot_content = http_request.response_body_text
+
+            records.append({
+                "org": extra.org,
+                "url": extra.url,
+                "year": extra.year,
+                "snapshot_url": extra.snapshot_url,
+                "snapshot_content": snapshot_content,
+            })
+
+        df = pd.DataFrame(records)
+        df = df.convert_dtypes(dtype_backend="pyarrow")
+        df.to_parquet(self.path_to_format(fb.TableFormat.PARQUET), index=False)
+
+        await db.close()
+
+
+class WMSnapshotContentLLMRequestGroup(SQLModel, table=True):
+    __tablename__ = "wm_snapshot_content_llm_request_groups"
+    __table_args__ = {"extend_existing": True}
+
+    llm_request_group_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_by_class: str
+
+
+class WMSnapshotContentLLMRequestExtra(SQLModel, table=True):
+    __tablename__ = "wm_snapshot_content_llm_request_extra"
+    __table_args__ = {"extend_existing": True}
+
+    llm_request_extra_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    org: str
+    url: str
+    year: int
+    snapshot_url: str
+
+
+class WMExtractedClusterSpecs(pyd.BaseModel):
+    """Structured schema for compute cluster specifications extraction."""
+
+    cluster_name: str = pyd.Field(
+        description="The nickname or formal name of the compute cluster",
+    )
+    cpus_total: int = pyd.Field(
+        description="The total number of CPUs in the cluster",
+    )
+    gpus_total: int = pyd.Field(
+        description="The total number of GPUs in the cluster",
+    )
+    storage_total_tb: int = pyd.Field(
+        description="The total storage available in the cluster, in terabytes",
+    )
+    scheduler_main: str = pyd.Field(
+        description="The main scheduler used in the cluster (such as Slurm, PBS, IBM LSF, etc.)",
+    )
+    free_to_use: bool = pyd.Field(
+        description="Is the cluster free to use inside the org or some cash payment/compensation is required.",
+    )
+
+
+class WMSnapshotContentLLMExtractionDB(fb.LLMRequestsDBMixin, fb.HTTPRequestsDBMixin, fb.DBDataObject):
+    """Database for LLM requests with structured output extraction from snapshot content."""
+
+    id: str = "wm_snapshot_content_llm_extraction_db"
+    description: str = "Database for logging and executing LLM extraction requests for cluster specs from snapshot content"
+    schema: List[Any] = [
+        WMSnapshotContentLLMRequestGroup,
+        WMSnapshotContentLLMRequestExtra,
+        fb.LLMRequest,
+        WMSnapshotContentHTTPRequestGroup,
+        WMSnapshotContentHTTPRequestExtra,
+        fb.HTTPRequest,
+    ]
+    supported_versions = tuple(URLVersions)
+
+    async def _populate_llm_requests(self) -> uuid.UUID:
+        """Populate database with LLM cluster specs extraction requests."""
+        llm_requests = await self._extract_cluster_specs(
+            snapshot_version=self.version,
+            model=fb.LLMModels.GEMINI_2_5_FLASH_LITE,
+        )
+        return llm_requests[0].llm_request_group_id if llm_requests else None
+
+    async def _extract_cluster_specs(
+        self,
+        snapshot_version: Enum,
+        model: fb.LLMModels = fb.LLMModels.GPT_5,
+    ) -> List[fb.LLMRequest]:
+        """Extract cluster specifications from snapshot content using structured output."""
+        from p40_flowbase.helpers import render_prompt_template
+
+        snapshot_obj = WMSnapshotContent(version=snapshot_version)
+
+        if not snapshot_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+            snapshot_obj.make(replace=False)
+
+        snapshots_df = snapshot_obj.pdf
+
+        snapshots_df = snapshots_df[snapshots_df["snapshot_content"].notna()]
+
+        group = WMSnapshotContentLLMRequestGroup(
+            created_by_class=self.__class__.__name__,
+        )
+
+        async with self.session_factory() as session:
+            session.add(group)
+            await session.commit()
+            await session.refresh(group)
+
+        system_prompt = render_prompt_template(
+            template_name="web_archive_cluster_extraction.md.jinja",
+            project_package="web_archive.prompts",
+        )
+
+        llm_requests_data = []
+
+        for _, row in snapshots_df.iterrows():
+            org = row["org"]
+            url = row["url"]
+            year = int(row["year"])
+            snapshot_url = row["snapshot_url"]
+            snapshot_content = row["snapshot_content"]
+
+            extra = WMSnapshotContentLLMRequestExtra(
+                org=org,
+                url=url,
+                year=year,
+                snapshot_url=snapshot_url,
+            )
+
+            async with self.session_factory() as session:
+                session.add(extra)
+                await session.commit()
+                await session.refresh(extra)
+
+            user_prompt = (
+                f"Extract compute cluster specifications from this webpage snapshot "
+                f"from {org} (year {year}):\n"
+                f"<webpage_snapshot>\n"
+                f"{snapshot_content}\n"
+                f"</webpage_snapshot>\n"
+            )
+
+            llm_requests_data.append({
+                "model": model,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "temperature": 0.1,
+                "response_schema": WMExtractedClusterSpecs,
+                "llm_request_group_id": group.llm_request_group_id,
+                "llm_request_extra_id": extra.llm_request_extra_id,
+            })
+
+        llm_requests = await self._add_llm_requests(llm_requests_data)
+
+        return llm_requests
+
+
+class ClusterSpecsStruct(pyd.BaseModel):
+    org: str = pyd.Field(
+        title="Organization",
+        description="Organization identifier",
+        json_schema_extra={"units": "text"},
+    )
+    url: str = pyd.Field(
+        title="URL",
+        description="Source URL",
+        json_schema_extra={"units": "text"},
+    )
+    year: int = pyd.Field(
+        title="Year",
+        description="Snapshot year",
+        json_schema_extra={"units": "year"},
+    )
+    snapshot_url: str = pyd.Field(
+        title="Snapshot URL",
+        description="Wayback Machine snapshot URL",
+        json_schema_extra={"units": "text"},
+    )
+    cluster_name: str = pyd.Field(
+        title="Cluster Name",
+        description="Name of the compute cluster",
+        json_schema_extra={"units": "text"},
+    )
+    cpus_total: str = pyd.Field(
+        title="Total CPUs",
+        description="Total number of CPUs",
+        json_schema_extra={"units": "text"},
+    )
+    gpus_total: str = pyd.Field(
+        title="Total GPUs",
+        description="Total number of GPUs",
+        json_schema_extra={"units": "text"},
+    )
+    storage_total_tb: str = pyd.Field(
+        title="Total Storage (TB)",
+        description="Total storage in terabytes",
+        json_schema_extra={"units": "TB"},
+    )
+    scheduler_main: str = pyd.Field(
+        title="Main Scheduler",
+        description="Main job scheduler",
+        json_schema_extra={"units": "text"},
+    )
+    free_to_use: str = pyd.Field(
+        title="Free to Use",
+        description="Whether the cluster is free to use",
+        json_schema_extra={"units": "text"},
+    )
+
+
+class ClusterSpecs(fb.TableDataObject):
+    id: str = "cluster_specs"
+    description: str = "Extracted compute cluster specifications from archived webpages"
+    supported_versions = tuple(URLVersions)
+    schema = ClusterSpecsStruct
+
+    def _make_default(self):
+        """Extract cluster specs from LLM extraction results."""
+        import asyncio
+
+        asyncio.run(self._extract_from_db())
+
+    async def _extract_from_db(self):
+        """Extract cluster specs from LLM extraction database."""
+        from sqlmodel import select
+
+        db = WMSnapshotContentLLMExtractionDB(version=self.version)
+
+        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+            await db.make_async()
+
+        async with db.session_factory() as session:
+            statement = (
+                select(fb.LLMRequest, WMSnapshotContentLLMRequestExtra)
+                .join(
+                    WMSnapshotContentLLMRequestExtra,
+                    fb.LLMRequest.llm_request_extra_id == WMSnapshotContentLLMRequestExtra.llm_request_extra_id,
+                )
+                .where(
+                    fb.LLMRequest.requested_at_utc.is_not(None),
+                    fb.LLMRequest.response_text.is_not(None),
+                )
+                .order_by(fb.LLMRequest.requested_at_utc.desc())
+            )
+            result = await session.exec(statement)
+            rows = result.all()
+
+        records = []
+        seen_keys = set()
+
+        for llm_request, extra in rows:
+            key = (extra.org, extra.url, extra.year, extra.snapshot_url)
+
+            if key in seen_keys:
+                continue
+
+            seen_keys.add(key)
+
+            try:
+                cluster_specs = json.loads(llm_request.response_text)
+
+                records.append({
+                    "org": extra.org,
+                    "url": extra.url,
+                    "year": extra.year,
+                    "snapshot_url": extra.snapshot_url,
+                    "cluster_name": cluster_specs.get("cluster_name", ""),
+                    "cpus_total": cluster_specs.get("cpus_total", ""),
+                    "gpus_total": cluster_specs.get("gpus_total", ""),
+                    "storage_total_tb": cluster_specs.get("storage_total_tb", ""),
+                    "scheduler_main": cluster_specs.get("scheduler_main", ""),
+                    "free_to_use": cluster_specs.get("free_to_use", ""),
+                })
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+        df = pd.DataFrame(records)
+        df = df.convert_dtypes(dtype_backend="pyarrow")
+        df.to_parquet(self.path_to_format(fb.TableFormat.PARQUET), index=False)
+
+        await db.close()

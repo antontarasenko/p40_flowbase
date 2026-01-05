@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "web_archive"
+version = "25.12.01"
+requires-python = ">=3.13"
+dependencies = [
+    "p40_flowbase~=0.1.0",
+    "pytest~=8.3.5",
+    "pytest-asyncio~=0.26.0",
+]
+
+[project.scripts]
+web_archive_manager = "web_archive.scripts.manager:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+web_archive = ["py.typed", "prompts/*"]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"

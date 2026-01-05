@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "p40_flowbase"
+version = "0.1.0"
+description = "Data pipeline framework"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [
+    {name = "Anton Tarasenko"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "aiohttp~=3.11.15",
+    "aiolimiter~=1.2.1",
+    "aiosqlite~=0.21.0",
+    "jinja2~=3.1.6",
+    "joblib~=1.4.2",
+    "matplotlib~=3.10.1",
+    "numpy~=2.2.5",
+    "openpyxl~=3.1.5",
+    "pandas~=2.2.3",
+    "pyarrow~=20.0.0",
+    "pydantic~=2.11.4",
+    "pydantic-settings~=2.8.1",
+    "scikit-learn~=1.6.1",
+    "sqlalchemy[asyncio]~=2.0.40",
+    "sqlmodel~=0.0.24",
+    "tabulate~=0.9.0",
+    "typer~=0.15.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build~=1.3.0",
+    "pytest~=8.4.2",
+    "pytest-asyncio~=1.3.0",
+    "pytest-xdist~=3.8.0",
+    "black~=25.1.0",
+    "ruff~=0.14.9",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+p40_flowbase = ["py.typed", "prompts/*", "templates/*"]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "auto"
+addopts = ""
+markers = [
+    "serial: marks tests that must run serially (not in parallel)",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"

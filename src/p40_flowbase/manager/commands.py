@@ -1,0 +1,171 @@
+"""
+MIT License
+
+Copyright (c) 2025 Anton Tarasenko
+"""
+
+import asyncio
+from typing import Type
+
+import typer
+from typing_extensions import Annotated
+
+from p40_flowbase.logging import logger
+from p40_flowbase.manager.utils import (
+    format_versions_help,
+    get_version_enum,
+)
+
+
+def create_object_app(
+    obj_class: Type,
+    data_local_tmp: str,
+) -> typer.Typer:
+    """Create a Typer app for an object class with standard commands.
+
+    Generates commands for:
+    - make: Create the data object
+    - convert: Convert to all formats
+    - populate: Populate requests (if HTTP/LLM mixin present)
+    - execute: Execute pending requests (if HTTP/LLM mixin present)
+    - retry: Retry failed requests (if HTTP/LLM mixin present)
+
+    Args:
+        obj_class: The data object class.
+        data_local_tmp: Base path for data storage.
+
+    Returns:
+        Typer app with appropriate commands.
+    """
+    epilog = format_versions_help(
+        obj_class=obj_class,
+        data_local_tmp=data_local_tmp,
+    )
+
+    object_app = typer.Typer(
+        help=obj_class.description,
+        epilog=epilog,
+        context_settings={"help_option_names": ["-h", "--help"]},
+    )
+
+    @object_app.command(epilog=epilog)
+    def make(
+        version: Annotated[str, typer.Option("--version", help="Version to create")],
+    ) -> None:
+        """Create the data object."""
+        version_enum = get_version_enum(obj_class, version)
+        obj = obj_class(version_enum)
+
+        logger.info(f"Making {obj_class.id} (version: {version})")
+
+        if hasattr(obj, "make_async"):
+            asyncio.run(obj.make_async(replace=False))
+        else:
+            obj.make(replace=False)
+
+        logger.info(f"Successfully created {obj_class.id}")
+
+    @object_app.command(name="convert", epilog=epilog)
+    def convert_cmd(
+        version: Annotated[str, typer.Option("--version", help="Version to convert")],
+    ) -> None:
+        """Convert the data object to all formats."""
+        version_enum = get_version_enum(obj_class, version)
+        obj = obj_class(version_enum)
+
+        logger.info(f"Saving all formats for {obj_class.id} (version: {version})")
+        obj.convert(replace=False)
+        logger.info(f"Successfully saved {obj_class.id}")
+
+    has_requests = (
+        hasattr(obj_class, "_populate_http_requests")
+        or hasattr(obj_class, "_populate_llm_requests")
+    )
+
+    if has_requests:
+        @object_app.command(name="populate", epilog=epilog)
+        def populate(
+            version: Annotated[
+                str,
+                typer.Option("--version", help="Version to populate requests for"),
+            ],
+        ) -> None:
+            """Populate requests for this version."""
+            version_enum = get_version_enum(obj_class, version)
+            obj = obj_class(version_enum)
+
+            logger.info(
+                f"Populating requests for {obj_class.id} (version: {version})"
+            )
+            group_id = asyncio.run(obj.populate())
+            logger.info(
+                f"Successfully populated requests for {obj_class.id}, "
+                f"group_id: {group_id}"
+            )
+
+    if has_requests:
+        @object_app.command(name="execute", epilog=epilog)
+        def execute_cmd(
+            version: Annotated[
+                str,
+                typer.Option("--version", help="Version to execute requests for"),
+            ],
+            rate_limit: Annotated[
+                float,
+                typer.Option("--rate-limit", help="Maximum requests per rate period"),
+            ] = 5.0,
+            rate_period: Annotated[
+                float,
+                typer.Option("--rate-period", help="Rate period in seconds"),
+            ] = 1.0,
+        ) -> None:
+            """Execute pending requests."""
+            version_enum = get_version_enum(obj_class, version)
+            obj = obj_class(version_enum)
+
+            logger.info(
+                f"Executing pending requests for {obj_class.id} (version: {version})"
+            )
+            asyncio.run(
+                obj.execute(
+                    rate_limit=rate_limit,
+                    rate_period=rate_period,
+                )
+            )
+            logger.info(f"Successfully executed requests for {obj_class.id}")
+
+    if has_requests:
+        @object_app.command(name="retry", epilog=epilog)
+        def retry_cmd(
+            version: Annotated[
+                str,
+                typer.Option(
+                    "--version",
+                    help="Version to retry failed requests for",
+                ),
+            ],
+            rate_limit: Annotated[
+                float,
+                typer.Option("--rate-limit", help="Maximum requests per rate period"),
+            ] = 5.0,
+            rate_period: Annotated[
+                float,
+                typer.Option("--rate-period", help="Rate period in seconds"),
+            ] = 1.0,
+        ) -> None:
+            """Retry failed requests."""
+            version_enum = get_version_enum(obj_class, version)
+            obj = obj_class(version_enum)
+
+            logger.info(
+                f"Retrying failed requests for {obj_class.id} (version: {version})"
+            )
+            asyncio.run(
+                obj.retry(
+                    rate_limit=rate_limit,
+                    rate_period=rate_period,
+                )
+            )
+            logger.info(f"Successfully retried requests for {obj_class.id}")
+
+    return object_app
