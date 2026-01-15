@@ -442,6 +442,48 @@ class WMSnapshotContent(fb.TableDataObject):
         await db.close()
 
 
+class WMSnapshotFiles(fb.CompositeDataObject):
+    id: str = "wm_snapshot_files"
+    description: str = "Wayback Machine snapshot HTML files organized by org/url/year"
+    supported_versions = tuple(URLVersions)
+
+    def _make_default(self):
+        """Save snapshot content to individual HTML files."""
+        import asyncio
+
+        asyncio.run(self._save_files())
+
+    async def _save_files(self):
+        """Save snapshot content from WMSnapshotContent to files."""
+        import urllib.parse
+
+        snapshot_obj = WMSnapshotContent(version=self.version)
+
+        if not snapshot_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+            snapshot_obj.make(replace=False)
+
+        snapshots_df = snapshot_obj.pdf
+        snapshots_df = snapshots_df[snapshots_df["snapshot_content"].notna()]
+
+        files_dir = self.path_to_format(fb.CompositeFormat.FILES)
+        files_dir.mkdir(parents=True, exist_ok=True)
+
+        for _, row in snapshots_df.iterrows():
+            org = row["org"]
+            url = row["url"]
+            year = int(row["year"])
+            snapshot_content = row["snapshot_content"]
+
+            url_escaped = urllib.parse.quote(url, safe="")
+
+            snapshot_dir = files_dir / org / url_escaped / str(year)
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+            snapshot_path = snapshot_dir / "snapshot.html"
+            with open(snapshot_path, "w", encoding="utf-8") as f:
+                f.write(snapshot_content)
+
+
 class WMSnapshotContentLLMRequestGroup(SQLModel, table=True):
     __tablename__ = "wm_snapshot_content_llm_request_groups"
     __table_args__ = {"extend_existing": True}
@@ -462,26 +504,65 @@ class WMSnapshotContentLLMRequestExtra(SQLModel, table=True):
     snapshot_url: str
 
 
+class GPUInventoryItem(pyd.BaseModel):
+    """GPU inventory item for a compute cluster."""
+
+    model: str = pyd.Field(
+        description="GPU model name, e.g. NVIDIA A100",
+    )
+    count: Optional[int] = pyd.Field(
+        description="Total number of GPUs of this model in the cluster",
+    )
+    memory_gb: Optional[float] = pyd.Field(
+        description="Per-GPU memory if stated (e.g., 40, 80)",
+    )
+
+
 class WMExtractedClusterSpecs(pyd.BaseModel):
     """Structured schema for compute cluster specifications extraction."""
 
     cluster_name: str = pyd.Field(
         description="The nickname or formal name of the compute cluster",
     )
-    cpus_total: int = pyd.Field(
+    initial_deployment_date: Optional[str] = pyd.Field(
+        description="The date when the cluster was initially deployed (e.g., '2015', '2015-03', '2015-03-15')",
+    )
+    cpus_total: Optional[int] = pyd.Field(
         description="The total number of CPUs in the cluster",
     )
-    gpus_total: int = pyd.Field(
+    cores_total: Optional[int] = pyd.Field(
+        description="The total number of CPU cores in the cluster",
+    )
+    gpus_total: Optional[int] = pyd.Field(
         description="The total number of GPUs in the cluster",
     )
-    storage_total_tb: int = pyd.Field(
+    gpus: Optional[List[GPUInventoryItem]] = pyd.Field(
+        default=None,
+        description="List of GPU models present in the cluster with counts",
+    )
+    nodes_total: Optional[int] = pyd.Field(
+        description="The total number of compute nodes in the cluster",
+    )
+    memory_total_gb: Optional[int] = pyd.Field(
+        description="The total memory available in the cluster, in gigabytes",
+    )
+    storage_total_tb: Optional[int] = pyd.Field(
         description="The total storage available in the cluster, in terabytes",
     )
-    scheduler_main: str = pyd.Field(
-        description="The main scheduler used in the cluster (such as Slurm, PBS, IBM LSF, etc.)",
+    tflops_total: Optional[float] = pyd.Field(
+        description="The total computational performance of the cluster, in TFLOPS",
     )
-    free_to_use: bool = pyd.Field(
+    price_tiers: Optional[str] = pyd.Field(
+        description="Description of price tiers for cluster usage (e.g., 'Free for all users', 'Free for researchers, $0.05/core-hour for others')",
+    )
+    free_to_use: Optional[bool] = pyd.Field(
         description="Is the cluster free to use inside the org or some cash payment/compensation is required.",
+    )
+    scheduler_main: Optional[str] = pyd.Field(
+        description="The main scheduler used for jobs in the cluster (such as Slurm, PBS, IBM LSF, etc.)",
+    )
+    software_installed: Optional[str] = pyd.Field(
+        description="List of major software packages installed on the cluster (e.g., 'MATLAB, Python, R, CUDA, TensorFlow')",
     )
 
 
@@ -604,34 +685,74 @@ class ClusterSpecsStruct(pyd.BaseModel):
         description="Wayback Machine snapshot URL",
         json_schema_extra={"units": "text"},
     )
-    cluster_name: str = pyd.Field(
+    cluster_name: Optional[str] = pyd.Field(
         title="Cluster Name",
         description="Name of the compute cluster",
         json_schema_extra={"units": "text"},
     )
-    cpus_total: str = pyd.Field(
+    initial_deployment_date: Optional[str] = pyd.Field(
+        title="Initial Deployment Date",
+        description="Date when the cluster was initially deployed",
+        json_schema_extra={"units": "text"},
+    )
+    cpus_total: Optional[int] = pyd.Field(
         title="Total CPUs",
         description="Total number of CPUs",
-        json_schema_extra={"units": "text"},
+        json_schema_extra={"units": "count"},
     )
-    gpus_total: str = pyd.Field(
+    cores_total: Optional[int] = pyd.Field(
+        title="Total Cores",
+        description="Total number of CPU cores",
+        json_schema_extra={"units": "count"},
+    )
+    gpus_total: Optional[int] = pyd.Field(
         title="Total GPUs",
         description="Total number of GPUs",
-        json_schema_extra={"units": "text"},
+        json_schema_extra={"units": "count"},
     )
-    storage_total_tb: str = pyd.Field(
+    gpus: Optional[str] = pyd.Field(
+        title="GPU Inventory",
+        description="JSON list of GPU models with counts and memory",
+        json_schema_extra={"units": "json"},
+    )
+    nodes_total: Optional[int] = pyd.Field(
+        title="Total Nodes",
+        description="Total number of compute nodes",
+        json_schema_extra={"units": "count"},
+    )
+    memory_total_gb: Optional[int] = pyd.Field(
+        title="Total Memory (GB)",
+        description="Total memory in gigabytes",
+        json_schema_extra={"units": "GB"},
+    )
+    storage_total_tb: Optional[int] = pyd.Field(
         title="Total Storage (TB)",
         description="Total storage in terabytes",
         json_schema_extra={"units": "TB"},
     )
-    scheduler_main: str = pyd.Field(
+    tflops_total: Optional[float] = pyd.Field(
+        title="Total TFLOPS",
+        description="Total computational performance in TFLOPS",
+        json_schema_extra={"units": "TFLOPS"},
+    )
+    price_tiers: Optional[str] = pyd.Field(
+        title="Price Tiers",
+        description="Price tiers for cluster usage",
+        json_schema_extra={"units": "text"},
+    )
+    free_to_use: Optional[bool] = pyd.Field(
+        title="Free to Use",
+        description="Whether the cluster is free to use",
+        json_schema_extra={"units": "boolean"},
+    )
+    scheduler_main: Optional[str] = pyd.Field(
         title="Main Scheduler",
         description="Main job scheduler",
         json_schema_extra={"units": "text"},
     )
-    free_to_use: str = pyd.Field(
-        title="Free to Use",
-        description="Whether the cluster is free to use",
+    software_installed: Optional[str] = pyd.Field(
+        title="Software Installed",
+        description="Major software packages installed on the cluster",
         json_schema_extra={"units": "text"},
     )
 
@@ -687,17 +808,28 @@ class ClusterSpecs(fb.TableDataObject):
             try:
                 cluster_specs = json.loads(llm_request.response_text)
 
+                gpus_raw = cluster_specs.get("gpus")
+                gpus_json = json.dumps(gpus_raw) if gpus_raw else None
+
                 records.append({
                     "org": extra.org,
                     "url": extra.url,
                     "year": extra.year,
                     "snapshot_url": extra.snapshot_url,
-                    "cluster_name": cluster_specs.get("cluster_name", ""),
-                    "cpus_total": cluster_specs.get("cpus_total", ""),
-                    "gpus_total": cluster_specs.get("gpus_total", ""),
-                    "storage_total_tb": cluster_specs.get("storage_total_tb", ""),
-                    "scheduler_main": cluster_specs.get("scheduler_main", ""),
-                    "free_to_use": cluster_specs.get("free_to_use", ""),
+                    "cluster_name": cluster_specs.get("cluster_name"),
+                    "initial_deployment_date": cluster_specs.get("initial_deployment_date"),
+                    "cpus_total": cluster_specs.get("cpus_total"),
+                    "cores_total": cluster_specs.get("cores_total"),
+                    "gpus_total": cluster_specs.get("gpus_total"),
+                    "gpus": gpus_json,
+                    "nodes_total": cluster_specs.get("nodes_total"),
+                    "memory_total_gb": cluster_specs.get("memory_total_gb"),
+                    "storage_total_tb": cluster_specs.get("storage_total_tb"),
+                    "tflops_total": cluster_specs.get("tflops_total"),
+                    "price_tiers": cluster_specs.get("price_tiers"),
+                    "free_to_use": cluster_specs.get("free_to_use"),
+                    "scheduler_main": cluster_specs.get("scheduler_main"),
+                    "software_installed": cluster_specs.get("software_installed"),
                 })
             except (json.JSONDecodeError, KeyError):
                 continue

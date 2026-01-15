@@ -17,6 +17,7 @@ from web_archive.data import (
     WMSnapshotContent,
     WMSnapshotContentDB,
     WMSnapshotContentLLMExtractionDB,
+    WMSnapshotFiles,
     WMSnapshotURLs,
     WMSnapshotURLsDB,
 )
@@ -31,6 +32,7 @@ class WebArchiveManager(BaseDataObjectManager):
         WMSnapshotURLs.id: WMSnapshotURLs,
         WMSnapshotContentDB.id: WMSnapshotContentDB,
         WMSnapshotContent.id: WMSnapshotContent,
+        WMSnapshotFiles.id: WMSnapshotFiles,
         WMSnapshotContentLLMExtractionDB.id: WMSnapshotContentLLMExtractionDB,
         ClusterSpecs.id: ClusterSpecs,
     }
@@ -41,6 +43,18 @@ class WebArchiveManager(BaseDataObjectManager):
     @property
     def data_local_tmp(self) -> str:
         return settings.data_local_tmp
+
+    @property
+    def anthropic_api_key(self) -> str | None:
+        return settings.anthropic_api_key
+
+    @property
+    def google_api_key(self) -> str | None:
+        return settings.google_api_key
+
+    @property
+    def openai_api_key(self) -> str | None:
+        return settings.openai_api_key
 
     def configure_styles(self) -> None:
         apply_style("style_1")

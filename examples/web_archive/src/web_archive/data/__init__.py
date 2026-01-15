@@ -9,6 +9,7 @@ from web_archive.data.objects import (
     WMSnapshotContentDB,
     WMSnapshotContentLLMExtractionDB,
     WMSnapshotContentLLMRequestGroup,
+    WMSnapshotFiles,
     WMSnapshotURLs,
     WMSnapshotURLsDB,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "WMSnapshotContentDB",
     "WMSnapshotContentLLMExtractionDB",
     "WMSnapshotContentLLMRequestGroup",
+    "WMSnapshotFiles",
     "WMSnapshotURLs",
     "WMSnapshotURLsDB",
 ]

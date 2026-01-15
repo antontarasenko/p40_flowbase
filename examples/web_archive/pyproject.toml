@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "web_archive"
-version = "25.12.01"
+version = "26.01.14"
 requires-python = ">=3.13"
 dependencies = [
     "p40_flowbase~=0.1.0",

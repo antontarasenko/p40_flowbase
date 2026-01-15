@@ -20,6 +20,7 @@ from web_archive.data import (
     WMSnapshotContentDB,
     WMSnapshotContentLLMExtractionDB,
     WMSnapshotContentLLMRequestGroup,
+    WMSnapshotFiles,
     WMSnapshotURLs,
     WMSnapshotURLsDB,
 )
@@ -231,6 +232,55 @@ class TestWMSnapshotContent:
 
         assert all(isinstance(dtype, pd.ArrowDtype) for dtype in df.dtypes), \
             "All columns should use PyArrow dtypes"
+
+
+@pytest.mark.xdist_group(name="web_archive_db_dependent")
+class TestWMSnapshotFiles:
+    """Tests for WMSnapshotFiles."""
+
+    def test_creates_files_directory(self, wm_snapshot_content_db):
+        """Test that WMSnapshotFiles creates a files directory."""
+        files_obj = WMSnapshotFiles(URLVersions.UNIS_1_TEST)
+        files_obj.make(replace=True)
+
+        files_dir = files_obj.path_to_format(fb.CompositeFormat.FILES)
+        assert files_dir.exists(), "Files directory should exist"
+        assert files_dir.is_dir(), "Files path should be a directory"
+
+    def test_creates_html_files(self, wm_snapshot_content_db):
+        """Test that WMSnapshotFiles creates HTML snapshot files."""
+        files_obj = WMSnapshotFiles(URLVersions.UNIS_1_TEST)
+        files_obj.make(replace=True)
+
+        files_dir = files_obj.path_to_format(fb.CompositeFormat.FILES)
+        html_files = list(files_dir.rglob("*.html"))
+
+        assert len(html_files) > 0, "Should have created at least one HTML file"
+
+    def test_html_files_not_empty(self, wm_snapshot_content_db):
+        """Test that created HTML files are not empty."""
+        files_obj = WMSnapshotFiles(URLVersions.UNIS_1_TEST)
+        files_obj.make(replace=True)
+
+        files_dir = files_obj.path_to_format(fb.CompositeFormat.FILES)
+        html_files = list(files_dir.rglob("*.html"))
+
+        for html_file in html_files:
+            assert html_file.stat().st_size > 0, f"{html_file} should not be empty"
+
+    def test_files_organized_by_org_url_year(self, wm_snapshot_content_db):
+        """Test that files are organized in org/url/year directory structure."""
+        files_obj = WMSnapshotFiles(URLVersions.UNIS_1_TEST)
+        files_obj.make(replace=True)
+
+        files_dir = files_obj.path_to_format(fb.CompositeFormat.FILES)
+        html_files = list(files_dir.rglob("snapshot.html"))
+
+        for html_file in html_files:
+            rel_path = html_file.relative_to(files_dir)
+            parts = rel_path.parts
+            assert len(parts) == 4, f"Expected org/url/year/snapshot.html structure, got {rel_path}"
+            assert parts[3] == "snapshot.html", f"File should be named snapshot.html"
 
 
 class TestWMSnapshotContentLLMExtractionDB:
