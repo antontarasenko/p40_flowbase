@@ -42,6 +42,18 @@ class WeatherReportManager(BaseDataObjectManager):
     def data_local_tmp(self) -> str:
         return settings.data_local_tmp
 
+    @property
+    def anthropic_api_key(self) -> str | None:
+        return settings.anthropic_api_key
+
+    @property
+    def google_api_key(self) -> str | None:
+        return settings.google_api_key
+
+    @property
+    def openai_api_key(self) -> str | None:
+        return settings.openai_api_key
+
     def configure_styles(self) -> None:
         apply_style("style_1")
 
