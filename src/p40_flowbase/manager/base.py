@@ -10,6 +10,7 @@ from abc import (
 )
 from typing import (
     Dict,
+    Optional,
     Type,
 )
 
@@ -17,6 +18,7 @@ import typer
 from typing_extensions import Annotated
 
 from p40_flowbase.core.base import DataObject
+from p40_flowbase.llm.mixin import LLMRequestsDBMixin
 from p40_flowbase.manager.commands import create_object_app
 from p40_flowbase.manager.utils import (
     check_object_exists,
@@ -58,8 +60,30 @@ class BaseDataObjectManager(ABC):
         """Return the path to the data storage directory."""
         ...
 
+    @property
+    def anthropic_api_key(self) -> Optional[str]:
+        """Return Anthropic API key. Override in subclass to provide key."""
+        return None
+
+    @property
+    def google_api_key(self) -> Optional[str]:
+        """Return Google API key. Override in subclass to provide key."""
+        return None
+
+    @property
+    def openai_api_key(self) -> Optional[str]:
+        """Return OpenAI API key. Override in subclass to provide key."""
+        return None
+
     def __init__(self):
         """Initialize the manager with a Typer app."""
+        DataObject.set_data_local_tmp(self.data_local_tmp)
+        LLMRequestsDBMixin.set_api_keys(
+            anthropic_api_key=self.anthropic_api_key,
+            google_api_key=self.google_api_key,
+            openai_api_key=self.openai_api_key,
+        )
+
         self.app = typer.Typer(
             help=self.app_help,
             no_args_is_help=True,
