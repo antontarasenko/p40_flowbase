@@ -17,6 +17,7 @@ from typing import (
 import typer
 from typing_extensions import Annotated
 
+from p40_flowbase.agents.mixin import AgentTasksDBMixin
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.llm.mixin import LLMRequestsDBMixin
 from p40_flowbase.manager.commands import create_object_app
@@ -81,6 +82,10 @@ class BaseDataObjectManager(ABC):
         LLMRequestsDBMixin.set_api_keys(
             anthropic_api_key=self.anthropic_api_key,
             google_api_key=self.google_api_key,
+            openai_api_key=self.openai_api_key,
+        )
+        AgentTasksDBMixin.set_api_keys(
+            anthropic_api_key=self.anthropic_api_key,
             openai_api_key=self.openai_api_key,
         )
 

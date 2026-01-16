@@ -32,6 +32,18 @@ from p40_flowbase.http import (
     HTTPRequestGroup,
     HTTPRequestsDBMixin,
 )
+from p40_flowbase.agents import (
+    AgentFile,
+    AgentMessage,
+    AgentModelVersion,
+    AgentModels,
+    AgentProviders,
+    AgentTask,
+    AgentTaskExtra,
+    AgentTaskGroup,
+    AgentTasksDBMixin,
+    AgentToolCall,
+)
 from p40_flowbase.llm import (
     LLMFile,
     LLMModelVersion,
@@ -58,6 +70,16 @@ from p40_flowbase.styles import (
 from p40_flowbase.version import __version__
 
 __all__ = [
+    "AgentFile",
+    "AgentMessage",
+    "AgentModelVersion",
+    "AgentModels",
+    "AgentProviders",
+    "AgentTask",
+    "AgentTaskExtra",
+    "AgentTaskGroup",
+    "AgentTasksDBMixin",
+    "AgentToolCall",
     "BaseDataObjectManager",
     "BaseFlowSettings",
     "CompositeDataObject",

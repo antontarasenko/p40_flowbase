@@ -1,0 +1,172 @@
+"""
+MIT License
+
+Copyright (c) 2025 Anton Tarasenko
+"""
+
+import uuid
+from datetime import (
+    UTC,
+    datetime,
+)
+from typing import Optional
+
+from sqlmodel import (
+    Field,
+    SQLModel,
+)
+
+from p40_flowbase.agents.providers import AgentModels
+
+
+class AgentTaskGroup(SQLModel, table=True):
+    """Group of related agent tasks.
+
+    Subclass this to add custom fields for your use case.
+    """
+
+    __tablename__ = "agent_task_groups"
+    __table_args__ = {"extend_existing": True}
+
+    agent_task_group_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+
+
+class AgentTaskExtra(SQLModel, table=True):
+    """Extra metadata for agent tasks.
+
+    Subclass this to add custom fields for your use case.
+    """
+
+    __tablename__ = "agent_task_extra"
+    __table_args__ = {"extend_existing": True}
+
+    agent_task_extra_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+
+
+class AgentFile(SQLModel, table=True):
+    """File attachment for agent tasks.
+
+    Tracks files that are passed as input to agent tasks.
+    """
+
+    __tablename__ = "agent_files"
+    __table_args__ = {"extend_existing": True}
+
+    agent_file_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+    name: str
+    md5sum: str
+    size_bytes: int
+    data_object_class_name: str
+    data_object_id: str
+    data_object_version: str
+    data_object_format: str
+    local_tmp_path: str
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AgentTask(SQLModel, table=True):
+    """Agent task record.
+
+    Represents a single task to be executed by an LLM agent.
+    """
+
+    __tablename__ = "agent_tasks"
+    __table_args__ = {"extend_existing": True}
+
+    agent_task_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    # Configuration
+    model: AgentModels
+    system_prompt: Optional[str] = None
+    task_prompt: str
+    allowed_tools: Optional[str] = None
+    max_turns: Optional[int] = None
+    working_directory: Optional[str] = None
+
+    # Attachments
+    attachments: Optional[str] = None
+
+    # Custom tools
+    enable_custom_tools: bool = False
+    mcp_server_config: Optional[str] = None
+
+    # Grouping
+    agent_task_group_id: Optional[uuid.UUID] = Field(
+        default=None,
+        foreign_key="agent_task_groups.agent_task_group_id",
+    )
+    agent_task_extra_id: Optional[uuid.UUID] = Field(
+        default=None,
+        foreign_key="agent_task_extra.agent_task_extra_id",
+    )
+
+    # Execution tracking
+    started_at_utc: Optional[datetime] = None
+    completed_at_utc: Optional[datetime] = None
+
+    # Output
+    final_response: Optional[str] = None
+    num_turns: Optional[int] = None
+    duration_ms: Optional[int] = None
+    total_cost_usd: Optional[float] = None
+    is_error: bool = False
+    error_message: Optional[str] = None
+
+
+class AgentToolCall(SQLModel, table=True):
+    """Individual tool invocation within an agent task.
+
+    Tracks each tool call made by the agent during execution.
+    """
+
+    __tablename__ = "agent_tool_calls"
+    __table_args__ = {"extend_existing": True}
+
+    agent_tool_call_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+    agent_task_id: uuid.UUID = Field(foreign_key="agent_tasks.agent_task_id")
+
+    turn_number: int
+    tool_name: str
+    tool_input: str
+    tool_output: Optional[str] = None
+    is_error: bool = False
+
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AgentMessage(SQLModel, table=True):
+    """Conversation message within an agent task.
+
+    Stores the full conversation history including reasoning.
+    """
+
+    __tablename__ = "agent_messages"
+    __table_args__ = {"extend_existing": True}
+
+    agent_message_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+    agent_task_id: uuid.UUID = Field(foreign_key="agent_tasks.agent_task_id")
+
+    turn_number: int
+    role: str
+    content: str
+
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))

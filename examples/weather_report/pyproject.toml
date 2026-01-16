@@ -7,7 +7,7 @@ name = "weather_report"
 version = "25.12.01"
 requires-python = ">=3.13"
 dependencies = [
-    "p40_flowbase~=0.1.0",
+    "p40_flowbase~=0.1.2",
     "pytest~=8.3.5",
     "pytest-asyncio~=0.26.0",
 ]

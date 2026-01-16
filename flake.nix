@@ -1,80 +1,139 @@
 {
+  description = "p40_flowbase - Data pipeline framework";
+
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    pyproject-nix.url = "github:pyproject-nix/pyproject.nix";
-    pyproject-nix.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, pyproject-nix }:
+  outputs = {
+    nixpkgs,
+    pyproject-nix,
+    uv2nix,
+    pyproject-build-systems,
+    ...
+  }:
   let
+    inherit (nixpkgs) lib;
+
     systems = [
       "aarch64-darwin"
       "aarch64-linux"
       "x86_64-darwin"
       "x86_64-linux"
     ];
-    eachSystem = nixpkgs.lib.genAttrs systems (system:
+
+    workspace = uv2nix.lib.workspace.loadWorkspace {
+      workspaceRoot = ./.;
+    };
+
+    overlay = workspace.mkPyprojectOverlay {
+      sourcePreference = "wheel";
+    };
+
+    editableOverlay = workspace.mkEditablePyprojectOverlay {
+      root = "$REPO_ROOT";
+    };
+
+    forAllSystems = lib.genAttrs systems;
+
+    pythonSets = forAllSystems (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          config = { allowUnfree = true; };
-          overlays = [
-            (final: _prev: {
-              unstable = import nixpkgs-unstable {
-                inherit system;
-                config = { allowUnfree = true; };
-              };
-            })
-          ];
-        };
-
+        pkgs = nixpkgs.legacyPackages.${system};
         python = pkgs.python313;
+      in
+      (pkgs.callPackage pyproject-nix.build.packages {
+        inherit python;
+      }).overrideScope (
+        lib.composeManyExtensions [
+          pyproject-build-systems.overlays.default
+          overlay
+        ]
+      )
+    );
 
-        p40flowbase = import ./nix/package.nix {
-          inherit python pyproject-nix;
-          projectRoot = ./.;
-        };
+  in {
+    formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-rfc-style);
 
-        base = with pkgs; [
-          bashInteractive
-          pkg-config
-        ];
-
-        baseDarwinExtras = with pkgs; pkgs.lib.optionals stdenv.isDarwin [
-          libiconv
-        ];
-
-        baseLinuxExtras = with pkgs; pkgs.lib.optionals stdenv.isLinux [
-        ];
-
+    lib = forAllSystems (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
       in {
-        formatter = pkgs.nixfmt-rfc-style;
+        inherit overlay;
 
-        packages.default = p40flowbase.package;
-        packages.p40_flowbase = p40flowbase.package;
+        mkPythonSet = { python }:
+          (pkgs.callPackage pyproject-nix.build.packages {
+            inherit python;
+          }).overrideScope (
+            lib.composeManyExtensions [
+              pyproject-build-systems.overlays.default
+              overlay
+            ]
+          );
 
-        devShells.default = pkgs.mkShell {
-          packages = base
-            ++ baseDarwinExtras
-            ++ baseLinuxExtras
-            ++ [ p40flowbase.devEnv ];
+        mkVirtualEnv = { python, extras ? "default" }:
+          let
+            pythonSet = (pkgs.callPackage pyproject-nix.build.packages {
+              inherit python;
+            }).overrideScope (
+              lib.composeManyExtensions [
+                pyproject-build-systems.overlays.default
+                overlay
+              ]
+            );
+            deps = {
+              default = workspace.deps.default;
+              all = workspace.deps.all;
+              optionals = workspace.deps.optionals;
+              groups = workspace.deps.groups;
+            };
+          in pythonSet.mkVirtualEnv "p40-flowbase-env" deps.${extras};
+      }
+    );
+
+    packages = forAllSystems (system: {
+      default = pythonSets.${system}.mkVirtualEnv "p40-flowbase-env" workspace.deps.default;
+    });
+
+    devShells = forAllSystems (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        pythonSet = pythonSets.${system}.overrideScope editableOverlay;
+        virtualenv = pythonSet.mkVirtualEnv "p40-flowbase-dev-env" workspace.deps.all;
+      in {
+        default = pkgs.mkShell {
+          packages = [
+            virtualenv
+            pkgs.uv
+          ];
+          env = {
+            UV_NO_SYNC = "1";
+            UV_PYTHON = pythonSet.python.interpreter;
+            UV_PYTHON_DOWNLOADS = "never";
+          };
           shellHook = ''
-            export PYTHONPATH="$PWD/src:$PYTHONPATH"
+            unset PYTHONPATH
+            export REPO_ROOT=$(git rev-parse --show-toplevel)
           '';
         };
-
-        lib = {
-          mkPackage = { python }: import ./nix/package.nix {
-            inherit python pyproject-nix;
-            projectRoot = ./.;
-          };
-        };
-      });
-  in {
-    formatter = nixpkgs.lib.mapAttrs (_: system: system.formatter) eachSystem;
-    devShells = nixpkgs.lib.mapAttrs (_: system: system.devShells) eachSystem;
-    packages  = nixpkgs.lib.mapAttrs (_: system: system.packages)  eachSystem;
-    lib       = nixpkgs.lib.mapAttrs (_: system: system.lib)       eachSystem;
+      }
+    );
   };
 }
