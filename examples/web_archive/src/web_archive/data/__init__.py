@@ -1,10 +1,15 @@
 """Data objects for web_archive project."""
 
 from web_archive.data.objects import (
+    AgentClusterSpecs,
+    AgentClusterSpecsStruct,
     ClusterSpecs,
     URLSample,
     URLVersions,
     WMExtractedClusterSpecs,
+    WMSnapshotAgentExtractionDB,
+    WMSnapshotAgentExtractionExtra,
+    WMSnapshotAgentExtractionGroup,
     WMSnapshotContent,
     WMSnapshotContentDB,
     WMSnapshotContentLLMExtractionDB,
@@ -15,10 +20,15 @@ from web_archive.data.objects import (
 )
 
 __all__ = [
+    "AgentClusterSpecs",
+    "AgentClusterSpecsStruct",
     "ClusterSpecs",
     "URLSample",
     "URLVersions",
     "WMExtractedClusterSpecs",
+    "WMSnapshotAgentExtractionDB",
+    "WMSnapshotAgentExtractionExtra",
+    "WMSnapshotAgentExtractionGroup",
     "WMSnapshotContent",
     "WMSnapshotContentDB",
     "WMSnapshotContentLLMExtractionDB",

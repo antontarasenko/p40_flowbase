@@ -839,3 +839,438 @@ class ClusterSpecs(fb.TableDataObject):
         df.to_parquet(self.path_to_format(fb.TableFormat.PARQUET), index=False)
 
         await db.close()
+
+
+# =============================================================================
+# Agentic Extraction Pipeline (alternative to LLM extraction)
+# =============================================================================
+
+
+class WMSnapshotAgentExtractionGroup(SQLModel, table=True):
+    """Group of related agent extraction tasks."""
+
+    __tablename__ = "wm_snapshot_agent_extraction_groups"
+    __table_args__ = {"extend_existing": True}
+
+    agent_task_group_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_by_class: str
+    model_used: str
+
+
+class WMSnapshotAgentExtractionExtra(SQLModel, table=True):
+    """Per-task metadata linking agent task to snapshot file."""
+
+    __tablename__ = "wm_snapshot_agent_extraction_extra"
+    __table_args__ = {"extend_existing": True}
+
+    agent_task_extra_id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+    org: str
+    url: str
+    year: int
+    snapshot_url: str
+    snapshot_path: str
+
+
+class WMSnapshotAgentExtractionDB(fb.AgentTasksDBMixin, fb.DBDataObject):
+    """Database for agent-based cluster specs extraction from snapshot content.
+
+    Uses Claude Agent SDK with full tool access (Read, WebSearch, WebFetch, etc.)
+    to extract cluster specifications from archived HTML files.
+    """
+
+    id: str = "wm_snapshot_agent_extraction_db"
+    description: str = (
+        "Database for agentic extraction of cluster specs using Claude Agent SDK"
+    )
+    supported_versions = tuple(URLVersions)
+    schema: List[Any] = [
+        WMSnapshotAgentExtractionGroup,
+        WMSnapshotAgentExtractionExtra,
+        fb.AgentTask,
+        fb.AgentToolCall,
+        fb.AgentMessage,
+        fb.AgentFile,
+    ]
+
+    async def _populate_agent_tasks(self) -> uuid.UUID:
+        """Populate database with agent extraction tasks for each snapshot file."""
+        import urllib.parse
+
+        from p40_flowbase.helpers import render_prompt_template
+
+        snapshot_files_obj = WMSnapshotFiles(version=self.version)
+        if not snapshot_files_obj.path_to_format(fb.CompositeFormat.FILES).exists():
+            snapshot_files_obj.make(replace=False)
+
+        files_dir = snapshot_files_obj.path_to_format(fb.CompositeFormat.FILES)
+
+        snapshot_content_obj = WMSnapshotContent(version=self.version)
+        if not snapshot_content_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+            snapshot_content_obj.make(replace=False)
+        content_df = snapshot_content_obj.pdf
+
+        snapshot_url_lookup = {}
+        for _, row in content_df.iterrows():
+            key = (row["org"], row["url"], int(row["year"]))
+            snapshot_url_lookup[key] = row["snapshot_url"]
+
+        group = WMSnapshotAgentExtractionGroup(
+            created_by_class=self.__class__.__name__,
+            model_used=fb.AgentModels.ANTHROPIC_OPUS.value.id,
+        )
+
+        async with self.session_factory() as session:
+            session.add(group)
+            await session.commit()
+            await session.refresh(group)
+
+        system_prompt = render_prompt_template(
+            template_name="agent_cluster_extraction.md.jinja",
+            project_package="web_archive.prompts",
+        )
+
+        agent_tasks_data = []
+
+        for org_dir in files_dir.iterdir():
+            if not org_dir.is_dir():
+                continue
+            org = org_dir.name
+
+            for url_dir in org_dir.iterdir():
+                if not url_dir.is_dir():
+                    continue
+                url = urllib.parse.unquote(url_dir.name)
+
+                for year_dir in url_dir.iterdir():
+                    if not year_dir.is_dir():
+                        continue
+                    year = int(year_dir.name)
+
+                    snapshot_path = year_dir / "snapshot.html"
+                    if not snapshot_path.exists():
+                        continue
+
+                    snapshot_url = snapshot_url_lookup.get((org, url, year), "")
+
+                    extra = WMSnapshotAgentExtractionExtra(
+                        org=org,
+                        url=url,
+                        year=year,
+                        snapshot_url=snapshot_url,
+                        snapshot_path=str(snapshot_path.absolute()),
+                    )
+
+                    async with self.session_factory() as session:
+                        session.add(extra)
+                        await session.commit()
+                        await session.refresh(extra)
+
+                    task_prompt = (
+                        f"Extract compute cluster specifications from the HTML file at:\n"
+                        f"{snapshot_path.absolute()}\n\n"
+                        f"Organization: {org}\n"
+                        f"Snapshot year: {year}\n"
+                        f"Original URL: {url}\n\n"
+                        f"Read the file and extract all cluster specifications. "
+                        f"If specs are ambiguous, use WebSearch for context."
+                    )
+
+                    agent_tasks_data.append({
+                        "model": fb.AgentModels.ANTHROPIC_OPUS,
+                        "task_prompt": task_prompt,
+                        "system_prompt": system_prompt,
+                        "max_turns": 10,
+                        "working_directory": str(files_dir),
+                        "output_format": WMExtractedClusterSpecs,
+                        "agent_task_group_id": group.agent_task_group_id,
+                        "agent_task_extra_id": extra.agent_task_extra_id,
+                    })
+
+        await self._add_agent_tasks(agent_tasks_data)
+
+        return group.agent_task_group_id
+
+
+class AgentClusterSpecsStruct(pyd.BaseModel):
+    """Schema for agent-extracted cluster specifications with agent metadata."""
+
+    org: str = pyd.Field(
+        title="Organization",
+        description="Organization identifier",
+        json_schema_extra={"units": "text"},
+    )
+    url: str = pyd.Field(
+        title="URL",
+        description="Source URL",
+        json_schema_extra={"units": "text"},
+    )
+    year: int = pyd.Field(
+        title="Year",
+        description="Snapshot year",
+        json_schema_extra={"units": "year"},
+    )
+    snapshot_url: str = pyd.Field(
+        title="Snapshot URL",
+        description="Wayback Machine URL of the archived snapshot",
+        json_schema_extra={"units": "text"},
+    )
+    cluster_name: Optional[str] = pyd.Field(
+        default=None,
+        title="Cluster Name",
+        description="Name of the compute cluster",
+        json_schema_extra={"units": "text"},
+    )
+    initial_deployment_date: Optional[str] = pyd.Field(
+        default=None,
+        title="Initial Deployment Date",
+        description="Date when the cluster was initially deployed",
+        json_schema_extra={"units": "text"},
+    )
+    cpus_total: Optional[int] = pyd.Field(
+        default=None,
+        title="Total CPUs",
+        description="Total number of CPUs",
+        json_schema_extra={"units": "count"},
+    )
+    cores_total: Optional[int] = pyd.Field(
+        default=None,
+        title="Total Cores",
+        description="Total number of CPU cores",
+        json_schema_extra={"units": "count"},
+    )
+    gpus_total: Optional[int] = pyd.Field(
+        default=None,
+        title="Total GPUs",
+        description="Total number of GPUs",
+        json_schema_extra={"units": "count"},
+    )
+    gpus: Optional[str] = pyd.Field(
+        default=None,
+        title="GPU Inventory",
+        description="JSON list of GPU models with counts and memory",
+        json_schema_extra={"units": "json"},
+    )
+    nodes_total: Optional[int] = pyd.Field(
+        default=None,
+        title="Total Nodes",
+        description="Total number of compute nodes",
+        json_schema_extra={"units": "count"},
+    )
+    memory_total_gb: Optional[int] = pyd.Field(
+        default=None,
+        title="Total Memory (GB)",
+        description="Total memory in gigabytes",
+        json_schema_extra={"units": "GB"},
+    )
+    storage_total_tb: Optional[int] = pyd.Field(
+        default=None,
+        title="Total Storage (TB)",
+        description="Total storage in terabytes",
+        json_schema_extra={"units": "TB"},
+    )
+    tflops_total: Optional[float] = pyd.Field(
+        default=None,
+        title="Total TFLOPS",
+        description="Total computational performance in TFLOPS",
+        json_schema_extra={"units": "TFLOPS"},
+    )
+    price_tiers: Optional[str] = pyd.Field(
+        default=None,
+        title="Price Tiers",
+        description="Price tiers for cluster usage",
+        json_schema_extra={"units": "text"},
+    )
+    free_to_use: Optional[bool] = pyd.Field(
+        default=None,
+        title="Free to Use",
+        description="Whether the cluster is free to use",
+        json_schema_extra={"units": "boolean"},
+    )
+    scheduler_main: Optional[str] = pyd.Field(
+        default=None,
+        title="Main Scheduler",
+        description="Main job scheduler",
+        json_schema_extra={"units": "text"},
+    )
+    software_installed: Optional[str] = pyd.Field(
+        default=None,
+        title="Software Installed",
+        description="Major software packages installed on the cluster",
+        json_schema_extra={"units": "text"},
+    )
+    agent_num_turns: Optional[int] = pyd.Field(
+        default=None,
+        title="Agent Turns",
+        description="Number of conversation turns used by the agent",
+        json_schema_extra={"units": "count"},
+    )
+    agent_cost_usd: Optional[float] = pyd.Field(
+        default=None,
+        title="Agent Cost (USD)",
+        description="Total API cost for the agent task",
+        json_schema_extra={"units": "USD"},
+    )
+    agent_tools_used: Optional[str] = pyd.Field(
+        default=None,
+        title="Agent Tools Used",
+        description="JSON list of tool names used by the agent",
+        json_schema_extra={"units": "json"},
+    )
+
+
+class AgentClusterSpecs(fb.TableDataObject):
+    """Extracted cluster specs from agent-based extraction."""
+
+    id: str = "agent_cluster_specs"
+    description: str = "Cluster specifications extracted via agentic multi-turn extraction"
+    supported_versions = tuple(URLVersions)
+    schema = AgentClusterSpecsStruct
+
+    def _make_default(self):
+        """Extract cluster specs from agent extraction results."""
+        import asyncio
+
+        asyncio.run(self._extract_from_db())
+
+    async def _extract_from_db(self):
+        """Extract cluster specs from agent extraction database."""
+        from sqlmodel import select
+
+        db = WMSnapshotAgentExtractionDB(version=self.version)
+
+        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+            await db.make_async()
+
+        async with db.session_factory() as session:
+            statement = (
+                select(fb.AgentTask, WMSnapshotAgentExtractionExtra)
+                .join(
+                    WMSnapshotAgentExtractionExtra,
+                    fb.AgentTask.agent_task_extra_id
+                    == WMSnapshotAgentExtractionExtra.agent_task_extra_id,
+                )
+                .where(
+                    fb.AgentTask.completed_at_utc.is_not(None),
+                    fb.AgentTask.is_error == False,
+                    fb.AgentTask.final_response.is_not(None),
+                )
+                .order_by(fb.AgentTask.completed_at_utc.desc())
+            )
+            result = await session.exec(statement)
+            rows = result.all()
+
+        async with db.session_factory() as session:
+            tool_calls_statement = select(fb.AgentToolCall)
+            tool_calls_result = await session.exec(tool_calls_statement)
+            all_tool_calls = tool_calls_result.all()
+
+        tools_by_task = {}
+        for tc in all_tool_calls:
+            task_id = tc.agent_task_id
+            if task_id not in tools_by_task:
+                tools_by_task[task_id] = set()
+            tools_by_task[task_id].add(tc.tool_name)
+
+        records = []
+        seen_keys = set()
+
+        for agent_task, extra in rows:
+            key = (extra.org, extra.url, extra.year)
+
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+
+            try:
+                cluster_specs = self._extract_json_from_response(
+                    agent_task.final_response
+                )
+
+                if cluster_specs is None:
+                    continue
+
+                gpus_raw = cluster_specs.get("gpus")
+                gpus_json = json.dumps(gpus_raw) if gpus_raw else None
+
+                task_tools = list(tools_by_task.get(agent_task.agent_task_id, []))
+
+                records.append({
+                    "org": extra.org,
+                    "url": extra.url,
+                    "year": extra.year,
+                    "snapshot_url": extra.snapshot_url,
+                    "cluster_name": cluster_specs.get("cluster_name"),
+                    "initial_deployment_date": cluster_specs.get(
+                        "initial_deployment_date"
+                    ),
+                    "cpus_total": cluster_specs.get("cpus_total"),
+                    "cores_total": cluster_specs.get("cores_total"),
+                    "gpus_total": cluster_specs.get("gpus_total"),
+                    "gpus": gpus_json,
+                    "nodes_total": cluster_specs.get("nodes_total"),
+                    "memory_total_gb": cluster_specs.get("memory_total_gb"),
+                    "storage_total_tb": cluster_specs.get("storage_total_tb"),
+                    "tflops_total": cluster_specs.get("tflops_total"),
+                    "price_tiers": cluster_specs.get("price_tiers"),
+                    "free_to_use": cluster_specs.get("free_to_use"),
+                    "scheduler_main": cluster_specs.get("scheduler_main"),
+                    "software_installed": cluster_specs.get("software_installed"),
+                    "agent_num_turns": agent_task.num_turns,
+                    "agent_cost_usd": agent_task.total_cost_usd,
+                    "agent_tools_used": json.dumps(task_tools),
+                })
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+
+        df = pd.DataFrame(records)
+        df = df.convert_dtypes(dtype_backend="pyarrow")
+        df.to_parquet(self.path_to_format(fb.TableFormat.PARQUET), index=False)
+
+        await db.close()
+
+    def _extract_json_from_response(self, response_text: str) -> Optional[dict]:
+        """Extract JSON object from agent response text.
+
+        Handles various response formats including:
+        - Pure JSON
+        - JSON wrapped in markdown code blocks
+        - JSON embedded in natural language
+        """
+        if not response_text:
+            return None
+
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            pass
+
+        code_block_match = re.search(
+            r"```(?:json)?\s*\n?(.*?)\n?```",
+            response_text,
+            re.DOTALL,
+        )
+        if code_block_match:
+            try:
+                return json.loads(code_block_match.group(1).strip())
+            except json.JSONDecodeError:
+                pass
+
+        json_match = re.search(
+            r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",
+            response_text,
+            re.DOTALL,
+        )
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        return None

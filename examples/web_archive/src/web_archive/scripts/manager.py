@@ -12,8 +12,10 @@ from p40_flowbase import (
 
 from web_archive.config import settings
 from web_archive.data import (
+    AgentClusterSpecs,
     ClusterSpecs,
     URLSample,
+    WMSnapshotAgentExtractionDB,
     WMSnapshotContent,
     WMSnapshotContentDB,
     WMSnapshotContentLLMExtractionDB,
@@ -35,6 +37,8 @@ class WebArchiveManager(BaseDataObjectManager):
         WMSnapshotFiles.id: WMSnapshotFiles,
         WMSnapshotContentLLMExtractionDB.id: WMSnapshotContentLLMExtractionDB,
         ClusterSpecs.id: ClusterSpecs,
+        WMSnapshotAgentExtractionDB.id: WMSnapshotAgentExtractionDB,
+        AgentClusterSpecs.id: AgentClusterSpecs,
     }
 
     app_name = "web_archive_manager"
