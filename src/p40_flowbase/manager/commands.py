@@ -80,6 +80,7 @@ def create_object_app(
     has_requests = (
         hasattr(obj_class, "_populate_http_requests")
         or hasattr(obj_class, "_populate_llm_requests")
+        or hasattr(obj_class, "_populate_agent_tasks")
     )
 
     if has_requests:

@@ -141,6 +141,7 @@ class AgentTasksDBMixin:
                 - attachments (Optional[List[str]]): List of agent_file_ids
                 - enable_custom_tools (bool): Enable MCP custom tools
                 - mcp_server_config (Optional[dict]): MCP server configuration
+                - output_format (Optional[dict|Type[pydantic.BaseModel]]): Structured output format
                 - agent_task_group_id (Optional[uuid.UUID]): Reference to group
                 - agent_task_extra_id (Optional[uuid.UUID]): Reference to extra
 
@@ -174,6 +175,23 @@ class AgentTasksDBMixin:
                 if mcp_server_config:
                     mcp_server_config_json = json.dumps(mcp_server_config)
 
+                output_format = task_data.get("output_format")
+                output_format_json = None
+                if output_format:
+                    import pydantic as pyd
+
+                    if isinstance(output_format, type) and issubclass(
+                        output_format, pyd.BaseModel
+                    ):
+                        output_format_json = json.dumps({
+                            "type": "json_schema",
+                            "schema": output_format.model_json_schema(),
+                        })
+                    elif isinstance(output_format, dict):
+                        output_format_json = json.dumps(output_format)
+                    else:
+                        output_format_json = json.dumps(output_format)
+
                 agent_task = AgentTask(
                     model=task_data["model"],
                     task_prompt=task_data["task_prompt"],
@@ -181,6 +199,7 @@ class AgentTasksDBMixin:
                     allowed_tools=allowed_tools_json,
                     max_turns=task_data.get("max_turns"),
                     working_directory=task_data.get("working_directory"),
+                    output_format=output_format_json,
                     attachments=attachments_json,
                     enable_custom_tools=task_data.get("enable_custom_tools", False),
                     mcp_server_config=mcp_server_config_json,
@@ -464,6 +483,10 @@ class AgentTasksDBMixin:
             if task.allowed_tools:
                 allowed_tools = json.loads(task.allowed_tools)
 
+            output_format = None
+            if task.output_format:
+                output_format = json.loads(task.output_format)
+
             options = claude_sdk.ClaudeAgentOptions(
                 model=task.model.value.api_id,
                 system_prompt=task.system_prompt,
@@ -471,6 +494,7 @@ class AgentTasksDBMixin:
                 cwd=task.working_directory,
                 max_turns=task.max_turns,
                 permission_mode="acceptEdits",
+                output_format=output_format,
             )
 
             tool_calls = []
@@ -505,7 +529,9 @@ class AgentTasksDBMixin:
                     if hasattr(message, "role"):
                         turn_number += 1
 
-                    if hasattr(message, "result"):
+                    if hasattr(message, "structured_output") and message.structured_output:
+                        final_response = json.dumps(message.structured_output)
+                    elif hasattr(message, "result") and message.result:
                         final_response = message.result
                     if hasattr(message, "num_turns"):
                         num_turns = message.num_turns
@@ -670,6 +696,11 @@ class AgentTasksDBMixin:
                 "mcp_server_config": (
                     json.loads(failed_task.mcp_server_config)
                     if failed_task.mcp_server_config
+                    else None
+                ),
+                "output_format": (
+                    json.loads(failed_task.output_format)
+                    if failed_task.output_format
                     else None
                 ),
                 "agent_task_group_id": failed_task.agent_task_group_id,

@@ -95,6 +95,7 @@ class AgentTask(SQLModel, table=True):
     allowed_tools: Optional[str] = None
     max_turns: Optional[int] = None
     working_directory: Optional[str] = None
+    output_format: Optional[str] = None
 
     # Attachments
     attachments: Optional[str] = None

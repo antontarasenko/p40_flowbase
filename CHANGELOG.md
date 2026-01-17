@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Add structured output to agent tasks
+- Fix manager commands for agent objects
+
 ## 0.1.2
 
 - Add agent tasks (Claude Agent and OpenAI Agents)
