@@ -38,48 +38,46 @@ class AgentModelVersion:
 class AgentModels(Enum):
     """Available agent models across providers."""
 
-    # OpenAI models (via openai-agents SDK)
-    OPENAI_GPT_5_2 = AgentModelVersion(
-        id="openai_gpt_5_2",
-        api_id="gpt-5-2",
+    CLAUDE_OPUS_4_5 = AgentModelVersion(
+        id="claude_opus_4_5_20251101",
+        api_id="claude-opus-4-5-20251101",
+        name="Claude Opus 4.5",
+        provider=AgentProviders.ANTHROPIC,
+    )
+    CLAUDE_SONNET_4_5 = AgentModelVersion(
+        id="claude_sonnet_4_5_20250929",
+        api_id="claude-sonnet-4-5-20250929",
+        name="Claude Sonnet 4.5",
+        provider=AgentProviders.ANTHROPIC,
+    )
+    CLAUDE_HAIKU_4_5 = AgentModelVersion(
+        id="claude_haiku_4_5_20251001",
+        api_id="claude-haiku-4-5-20251001",
+        name="Claude Haiku 4.5",
+        provider=AgentProviders.ANTHROPIC,
+    )
+
+    GPT_5_2 = AgentModelVersion(
+        id="gpt_5_2",
+        api_id="gpt-5.2",
         name="GPT-5.2",
         provider=AgentProviders.OPENAI,
     )
-    OPENAI_GPT_5 = AgentModelVersion(
-        id="openai_gpt_5",
+    GPT_5 = AgentModelVersion(
+        id="gpt_5",
         api_id="gpt-5",
         name="GPT-5",
         provider=AgentProviders.OPENAI,
     )
-    OPENAI_GPT_5_MINI = AgentModelVersion(
-        id="openai_gpt_5_mini",
+    GPT_5_MINI = AgentModelVersion(
+        id="gpt_5_mini",
         api_id="gpt-5-mini",
         name="GPT-5 Mini",
         provider=AgentProviders.OPENAI,
     )
-    OPENAI_GPT_5_NANO = AgentModelVersion(
-        id="openai_gpt_5_nano",
+    GPT_5_NANO = AgentModelVersion(
+        id="gpt_5_nano",
         api_id="gpt-5-nano",
         name="GPT-5 Nano",
         provider=AgentProviders.OPENAI,
-    )
-
-    # Anthropic models (via claude-agent-sdk)
-    ANTHROPIC_OPUS = AgentModelVersion(
-        id="anthropic_opus",
-        api_id="opus",
-        name="Claude Opus",
-        provider=AgentProviders.ANTHROPIC,
-    )
-    ANTHROPIC_SONNET = AgentModelVersion(
-        id="anthropic_sonnet",
-        api_id="sonnet",
-        name="Claude Sonnet",
-        provider=AgentProviders.ANTHROPIC,
-    )
-    ANTHROPIC_HAIKU = AgentModelVersion(
-        id="anthropic_haiku",
-        api_id="haiku",
-        name="Claude Haiku",
-        provider=AgentProviders.ANTHROPIC,
     )

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4
+
+- Fix LLM model versions used in agent tasks
+- Fix logging of agent tool use in agent tasks
+
 ## 0.1.3
 
 - Add structured output to agent tasks

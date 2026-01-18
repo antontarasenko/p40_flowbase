@@ -510,21 +510,20 @@ class AgentTasksDBMixin:
                 async for message in client.receive_response():
                     if hasattr(message, "content"):
                         for block in message.content:
-                            if hasattr(block, "type"):
-                                if block.type == "tool_use":
-                                    tool_calls.append({
-                                        "turn_number": turn_number,
-                                        "tool_name": block.name if hasattr(block, "name") else "unknown",
-                                        "tool_input": json.dumps(block.input) if hasattr(block, "input") else "{}",
-                                        "tool_output": None,
-                                        "is_error": False,
-                                    })
-                                elif block.type == "text":
-                                    messages.append({
-                                        "turn_number": turn_number,
-                                        "role": "assistant",
-                                        "content": block.text if hasattr(block, "text") else "",
-                                    })
+                            if hasattr(block, "name") and hasattr(block, "input"):
+                                tool_calls.append({
+                                    "turn_number": turn_number,
+                                    "tool_name": block.name,
+                                    "tool_input": json.dumps(block.input),
+                                    "tool_output": None,
+                                    "is_error": False,
+                                })
+                            elif hasattr(block, "text"):
+                                messages.append({
+                                    "turn_number": turn_number,
+                                    "role": "assistant",
+                                    "content": block.text,
+                                })
 
                     if hasattr(message, "role"):
                         turn_number += 1
