@@ -7,9 +7,7 @@ SYSTEM := $(shell nix eval --impure --raw --expr 'builtins.currentSystem')
 
 WHEEL_NAME := p40_flowbase-$(VERSION)-py3-none-any.whl
 WHEEL_PATH := dist/$(WHEEL_NAME)
-WHEEL_LATEST_NAME := p40_flowbase-latest-py3-none-any.whl
 FLAKE_TARBALL := p40_flowbase-$(VERSION).tar.gz
-FLAKE_LATEST_NAME := p40_flowbase-latest.tar.gz
 NIX_RESULT := ./result
 
 .PHONY: all clean build-python build-nix build-flake-tarball upload-python upload-flake upload info help
@@ -42,10 +40,8 @@ info:
 	@echo "S3 bucket:        $(S3_BUCKET)"
 	@echo ""
 	@echo "Distribution URLs:"
-	@echo "  Python wheel (versioned): $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)"
-	@echo "  Python wheel (latest):    $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_LATEST_NAME)"
-	@echo "  Nix flake (versioned):    $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)"
-	@echo "  Nix flake (latest):       $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_LATEST_NAME)"
+	@echo "  Python wheel: $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)"
+	@echo "  Nix flake:    $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)"
 	@echo ""
 	@if [ -L $(NIX_RESULT) ]; then \
 		echo "Nix store path: $$(readlink $(NIX_RESULT))"; \
@@ -72,23 +68,13 @@ upload: upload-python upload-flake
 
 upload-python: $(WHEEL_PATH)
 	@echo "Uploading Python wheel to S3..."
-	# Upload versioned wheel
 	aws s3 cp $(WHEEL_PATH) $(S3_BUCKET)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)
-	# Upload as latest
-	aws s3 cp $(WHEEL_PATH) $(S3_BUCKET)/$(S3_PYTHON_PREFIX)/$(WHEEL_LATEST_NAME)
-	@echo "Uploaded to:"
-	@echo "  $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)"
-	@echo "  $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_LATEST_NAME)"
+	@echo "Uploaded to: $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)"
 
 upload-flake: $(FLAKE_TARBALL)
 	@echo "Uploading flake tarball to S3..."
-	# Upload versioned tarball
 	aws s3 cp $(FLAKE_TARBALL) $(S3_BUCKET)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)
-	# Upload as latest
-	aws s3 cp $(FLAKE_TARBALL) $(S3_BUCKET)/$(S3_FLAKE_PREFIX)/$(FLAKE_LATEST_NAME)
-	@echo "Uploaded to:"
-	@echo "  $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)"
-	@echo "  $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_LATEST_NAME)"
+	@echo "Uploaded to: $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)"
 
 # Ensure wheel exists before upload
 $(WHEEL_PATH):
