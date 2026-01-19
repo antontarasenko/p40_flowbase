@@ -923,7 +923,7 @@ class WMSnapshotAgentExtractionDB(fb.AgentTasksDBMixin, fb.DBDataObject):
 
         group = WMSnapshotAgentExtractionGroup(
             created_by_class=self.__class__.__name__,
-            model_used=fb.AgentModels.ANTHROPIC_OPUS.value.id,
+            model_used=fb.AgentModels.CLAUDE_OPUS_4_5.value.id,
         )
 
         async with self.session_factory() as session:
@@ -983,7 +983,7 @@ class WMSnapshotAgentExtractionDB(fb.AgentTasksDBMixin, fb.DBDataObject):
                     )
 
                     agent_tasks_data.append({
-                        "model": fb.AgentModels.ANTHROPIC_OPUS,
+                        "model": fb.AgentModels.CLAUDE_OPUS_4_5,
                         "task_prompt": task_prompt,
                         "system_prompt": system_prompt,
                         "max_turns": 10,
