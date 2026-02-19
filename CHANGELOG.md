@@ -3,6 +3,7 @@
 ## Branch `main`
 
 - Update `claude-agent-sdk` and `openai-agents` to later versions
+- Fix `retry` in requests when failed retries get duplicated
 
 ## 0.1.4
 

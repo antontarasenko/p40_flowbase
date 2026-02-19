@@ -125,6 +125,7 @@ class AgentTask(SQLModel, table=True):
     total_cost_usd: Optional[float] = None
     is_error: bool = False
     error_message: Optional[str] = None
+    superseded_by_id: Optional[uuid.UUID] = None
 
 
 class AgentToolCall(SQLModel, table=True):

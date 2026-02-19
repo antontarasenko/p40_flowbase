@@ -853,12 +853,14 @@ class LLMRequestsDBMixin:
         Returns:
             List of new LLMRequest entries created for retries.
         """
+        import sqlalchemy
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(LLMRequest).where(
                 LLMRequest.requested_at_utc.is_not(None),
                 LLMRequest.response_text.is_(None),
+                LLMRequest.superseded_by_id.is_(None),
             )
             if llm_request_group_id is not None:
                 statement = statement.where(
@@ -888,7 +890,18 @@ class LLMRequestsDBMixin:
                 )
             retry_requests_data.append(retry_data)
 
-        await self._add_llm_requests(retry_requests_data)
+        new_requests = await self._add_llm_requests(retry_requests_data)
+
+        async with self.session_factory() as session:
+            for failed_request, new_request in zip(failed_requests, new_requests):
+                await session.execute(
+                    sqlalchemy.update(LLMRequest)
+                    .where(
+                        LLMRequest.llm_request_id == failed_request.llm_request_id
+                    )
+                    .values(superseded_by_id=new_request.llm_request_id)
+                )
+            await session.commit()
 
         return await self._execute_pending_llm_requests(
             rate_limit=rate_limit,

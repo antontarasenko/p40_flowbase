@@ -377,13 +377,17 @@ class HTTPRequestsDBMixin:
             List of original failed request entries that were retried.
         """
         import aiohttp
+        import sqlalchemy
         from aiolimiter import AsyncLimiter
         from sqlmodel import select
 
         limiter = AsyncLimiter(max_rate=rate_limit, time_period=rate_period)
 
         async with self.session_factory() as session:
-            statement = select(HTTPRequest).where(HTTPRequest.response_status != 200)
+            statement = select(HTTPRequest).where(
+                HTTPRequest.response_status != 200,
+                HTTPRequest.superseded_by_id.is_(None),
+            )
             if http_request_group_id is not None:
                 group_uuid = (
                     uuid.UUID(http_request_group_id)
@@ -399,10 +403,19 @@ class HTTPRequestsDBMixin:
         async with aiohttp.ClientSession() as http_client:
             for row in rows:
                 async with limiter:
-                    await self._retry_single_http_request(
+                    new_request = await self._retry_single_http_request(
                         http_client,
                         row,
                         ephemeral_headers,
                     )
+                async with self.session_factory() as session:
+                    await session.execute(
+                        sqlalchemy.update(HTTPRequest)
+                        .where(
+                            HTTPRequest.http_request_id == row.http_request_id
+                        )
+                        .values(superseded_by_id=new_request.http_request_id)
+                    )
+                    await session.commit()
 
         return rows

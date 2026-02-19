@@ -80,3 +80,4 @@ class HTTPRequest(SQLModel, table=True):
 
     created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
     requested_at_utc: Optional[datetime] = None
+    superseded_by_id: Optional[uuid.UUID] = None

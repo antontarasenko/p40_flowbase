@@ -113,6 +113,7 @@ class LLMRequest(SQLModel, table=True):
     )
 
     requested_at_utc: Optional[datetime] = None
+    superseded_by_id: Optional[uuid.UUID] = None
 
     def model_post_init(self, __context):
         """Calculate expected_input_cost_usd from prompts."""

@@ -659,12 +659,14 @@ class AgentTasksDBMixin:
         Returns:
             List of new AgentTask entries created for retries.
         """
+        import sqlalchemy
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(AgentTask).where(
                 AgentTask.started_at_utc.is_not(None),
                 AgentTask.is_error == True,
+                AgentTask.superseded_by_id.is_(None),
             )
             if agent_task_group_id is not None:
                 statement = statement.where(
@@ -707,7 +709,18 @@ class AgentTasksDBMixin:
             }
             retry_tasks_data.append(retry_data)
 
-        await self._add_agent_tasks(retry_tasks_data)
+        new_tasks = await self._add_agent_tasks(retry_tasks_data)
+
+        async with self.session_factory() as session:
+            for failed_task, new_task in zip(failed_tasks, new_tasks):
+                await session.execute(
+                    sqlalchemy.update(AgentTask)
+                    .where(
+                        AgentTask.agent_task_id == failed_task.agent_task_id
+                    )
+                    .values(superseded_by_id=new_task.agent_task_id)
+                )
+            await session.commit()
 
         return await self._execute_pending_agent_tasks(
             rate_limit=rate_limit,
