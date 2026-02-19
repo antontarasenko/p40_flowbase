@@ -113,7 +113,7 @@ class DBDataObject(DataObject):
         Raises:
             FileExistsError: If master copy exists and replace=False.
         """
-        if self.path_to_format(self.make_format).exists() and not replace:
+        if self.exists() and not replace:
             raise FileExistsError(
                 f"Object {self.object_stem} already exists in default format ({self.make_format.value}). "
                 f"Use replace=True to overwrite."
@@ -142,7 +142,7 @@ class DBDataObject(DataObject):
         """
         from enum import StrEnum
 
-        if not self.path_to_format(self.make_format).exists():
+        if not self.exists():
             raise FileNotFoundError(
                 f"Master copy not found for {self.object_stem}. "
                 f"Call make_async() first to create the master copy in {self.make_format.value} format."

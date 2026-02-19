@@ -119,7 +119,7 @@ class WMSnapshotURLsDB(fb.HTTPRequestsDBMixin, fb.DBDataObject):
         """Populate database with Wayback Machine Availability API requests."""
         sample_obj = URLSample(version=self.version)
 
-        if not sample_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not sample_obj.exists():
             sample_obj.make(replace=False)
 
         urls_df = sample_obj.pdf
@@ -209,7 +209,7 @@ class WMSnapshotURLs(fb.TableDataObject):
 
         db = WMSnapshotURLsDB(version=self.version)
 
-        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+        if not db.exists():
             await db.make_async()
 
         async with db.session_factory() as session:
@@ -297,7 +297,7 @@ class WMSnapshotContentDB(fb.HTTPRequestsDBMixin, fb.DBDataObject):
         """Populate database with snapshot content retrieval requests."""
         snapshots_obj = WMSnapshotURLs(version=self.version)
 
-        if not snapshots_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not snapshots_obj.exists():
             snapshots_obj.make(replace=False)
 
         snapshots_df = snapshots_obj.pdf
@@ -396,7 +396,7 @@ class WMSnapshotContent(fb.TableDataObject):
 
         db = WMSnapshotContentDB(version=self.version)
 
-        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+        if not db.exists():
             await db.make_async()
 
         async with db.session_factory() as session:
@@ -459,7 +459,7 @@ class WMSnapshotFiles(fb.CompositeDataObject):
 
         snapshot_obj = WMSnapshotContent(version=self.version)
 
-        if not snapshot_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not snapshot_obj.exists():
             snapshot_obj.make(replace=False)
 
         snapshots_df = snapshot_obj.pdf
@@ -599,7 +599,7 @@ class WMSnapshotContentLLMExtractionDB(fb.LLMRequestsDBMixin, fb.HTTPRequestsDBM
 
         snapshot_obj = WMSnapshotContent(version=snapshot_version)
 
-        if not snapshot_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not snapshot_obj.exists():
             snapshot_obj.make(replace=False)
 
         snapshots_df = snapshot_obj.pdf
@@ -775,7 +775,7 @@ class ClusterSpecs(fb.TableDataObject):
 
         db = WMSnapshotContentLLMExtractionDB(version=self.version)
 
-        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+        if not db.exists():
             await db.make_async()
 
         async with db.session_factory() as session:
@@ -906,13 +906,13 @@ class WMSnapshotAgentExtractionDB(fb.AgentTasksDBMixin, fb.DBDataObject):
         from p40_flowbase.helpers import render_prompt_template
 
         snapshot_files_obj = WMSnapshotFiles(version=self.version)
-        if not snapshot_files_obj.path_to_format(fb.CompositeFormat.FILES).exists():
+        if not snapshot_files_obj.exists():
             snapshot_files_obj.make(replace=False)
 
         files_dir = snapshot_files_obj.path_to_format(fb.CompositeFormat.FILES)
 
         snapshot_content_obj = WMSnapshotContent(version=self.version)
-        if not snapshot_content_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not snapshot_content_obj.exists():
             snapshot_content_obj.make(replace=False)
         content_df = snapshot_content_obj.pdf
 
@@ -1145,7 +1145,7 @@ class AgentClusterSpecs(fb.TableDataObject):
 
         db = WMSnapshotAgentExtractionDB(version=self.version)
 
-        if not db.path_to_format(fb.DBFormat.SQLITE).exists():
+        if not db.exists():
             await db.make_async()
 
         async with db.session_factory() as session:

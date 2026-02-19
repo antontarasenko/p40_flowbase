@@ -148,6 +148,14 @@ class DataObject(ABC):
         """
         return self.local_dir / f"{self.object_stem}.{fmt.value}"
 
+    def exists(self) -> bool:
+        """Check whether the master copy of this data object exists.
+
+        Returns:
+            True if the master copy file or directory exists, False otherwise.
+        """
+        return self.path_to_format(self.make_format).exists()
+
     def _delete_format(self, fmt: StrEnum) -> None:
         """Delete a specific format of the object.
 
@@ -201,7 +209,7 @@ class DataObject(ABC):
         Raises:
             FileExistsError: If master copy exists and replace=False.
         """
-        if self.path_to_format(self.make_format).exists() and not replace:
+        if self.exists() and not replace:
             raise FileExistsError(
                 f"Object {self.object_stem} already exists in default format ({self.make_format.value}). "
                 f"Use replace=True to overwrite."
@@ -228,7 +236,7 @@ class DataObject(ABC):
             FileExistsError: If format copy exists and replace=False.
             ValueError: If fmt is not a supported format.
         """
-        if not self.path_to_format(self.make_format).exists():
+        if not self.exists():
             raise FileNotFoundError(
                 f"Master copy not found for {self.object_stem}. "
                 f"Call make() first to create the master copy in {self.make_format.value} format."

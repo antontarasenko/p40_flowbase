@@ -132,7 +132,7 @@ class WeatherHTTPRequestsDB(fb.HTTPRequestsDBMixin, fb.DBDataObject):
         """Populate points requests for a specific sample version."""
         sample_obj = CitySample(sample_version)
 
-        if not sample_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not sample_obj.exists():
             sample_obj.make(replace=False)
 
         locations_df = sample_obj.pdf
@@ -175,7 +175,7 @@ class WeatherHTTPRequestsDB(fb.HTTPRequestsDBMixin, fb.DBDataObject):
         from sqlmodel import select
 
         sample_obj = CitySample(sample_version)
-        if not sample_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not sample_obj.exists():
             sample_obj.make(replace=False)
 
         locations_df = sample_obj.pdf
@@ -245,11 +245,11 @@ class ForecastComposite(fb.CompositeDataObject):
         """Extract forecast data from database."""
         requests_db = WeatherHTTPRequestsDB(MainVersions.MAIN)
 
-        if not requests_db.path_to_format(fb.DBFormat.SQLITE).exists():
+        if not requests_db.exists():
             await requests_db.make_async()
 
         sample_obj = CitySample(self.version)
-        if not sample_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not sample_obj.exists():
             sample_obj.make(replace=False)
 
         locations_df = sample_obj.pdf
@@ -452,7 +452,7 @@ class AverageTemperatureTable(fb.TableDataObject):
         """Aggregate temperature data by city and state."""
         table_obj = HourlyForecastTable(self.version)
 
-        if not table_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not table_obj.exists():
             table_obj.make(replace=False)
 
         df = table_obj.pdf
@@ -479,7 +479,7 @@ class TemperatureFigure(fb.FigureDataObject):
 
         table_obj = HourlyForecastTable(self.version)
 
-        if not table_obj.path_to_format(fb.TableFormat.PARQUET).exists():
+        if not table_obj.exists():
             table_obj.make(replace=False)
 
         df = table_obj.pdf
@@ -528,27 +528,27 @@ class WeatherReportDocument(fb.DocumentDataObject):
         east_figure_obj = TemperatureFigure(CoastVersions.EAST_COAST)
         west_figure_obj = TemperatureFigure(CoastVersions.WEST_COAST)
 
-        if not east_agg_table_obj.path_to_format(east_agg_table_obj.make_format).exists():
+        if not east_agg_table_obj.exists():
             east_agg_table_obj.make()
         if not east_agg_table_obj.path_to_format(fb.TableFormat.JSON).exists():
             east_agg_table_obj.convert(fb.TableFormat.JSON)
         with open(east_agg_table_obj.path_to_format(fb.TableFormat.JSON), "r") as f:
             east_agg_table_data = json.load(f)
 
-        if not west_agg_table_obj.path_to_format(west_agg_table_obj.make_format).exists():
+        if not west_agg_table_obj.exists():
             west_agg_table_obj.make()
         if not west_agg_table_obj.path_to_format(fb.TableFormat.JSON).exists():
             west_agg_table_obj.convert(fb.TableFormat.JSON)
         with open(west_agg_table_obj.path_to_format(fb.TableFormat.JSON), "r") as f:
             west_agg_table_data = json.load(f)
 
-        if not east_figure_obj.path_to_format(east_figure_obj.make_format).exists():
+        if not east_figure_obj.exists():
             east_figure_obj.make()
         if not east_figure_obj.path_to_format(fb.FigureFormat.SVG).exists():
             east_figure_obj.convert(fb.FigureFormat.SVG)
         east_figure_path = east_figure_obj.path_to_format(fb.FigureFormat.SVG)
 
-        if not west_figure_obj.path_to_format(west_figure_obj.make_format).exists():
+        if not west_figure_obj.exists():
             west_figure_obj.make()
         if not west_figure_obj.path_to_format(fb.FigureFormat.SVG).exists():
             west_figure_obj.convert(fb.FigureFormat.SVG)
@@ -614,7 +614,7 @@ class ReportTranscriptionDB(fb.LLMRequestsDBMixin, fb.HTTPRequestsDBMixin, fb.DB
         pdf_path = document.path_to_format(fb.DocumentFormat.PDF)
 
         if not pdf_path.exists():
-            if not document.path_to_format(document.make_format).exists():
+            if not document.exists():
                 document.make()
             document.convert(fb.DocumentFormat.PDF)
 
@@ -703,7 +703,7 @@ class ReportMetadataDB(fb.LLMRequestsDBMixin, fb.HTTPRequestsDBMixin, fb.DBDataO
         html_path = document.path_to_format(fb.DocumentFormat.HTML)
 
         if not html_path.exists():
-            if not document.path_to_format(document.make_format).exists():
+            if not document.exists():
                 document.make()
             document.convert(fb.DocumentFormat.HTML)
 
