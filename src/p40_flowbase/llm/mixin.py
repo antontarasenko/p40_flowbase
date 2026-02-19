@@ -40,6 +40,42 @@ from p40_flowbase.llm.providers import (
 from p40_flowbase.logging import logger
 
 
+def _ensure_additional_properties_false(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively set additionalProperties to false on all object-type schemas.
+
+    Required by providers like Anthropic and OpenAI (strict mode) for structured
+    output schemas.
+
+    Args:
+        schema: JSON schema dict (modified in place and returned).
+
+    Returns:
+        The same schema dict with additionalProperties set.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    if schema.get("type") == "object" and "properties" in schema:
+        schema["additionalProperties"] = False
+        for prop_schema in schema["properties"].values():
+            _ensure_additional_properties_false(prop_schema)
+
+    for key in ("$defs", "definitions"):
+        if key in schema:
+            for def_schema in schema[key].values():
+                _ensure_additional_properties_false(def_schema)
+
+    if "items" in schema:
+        _ensure_additional_properties_false(schema["items"])
+
+    for key in ("anyOf", "allOf", "oneOf"):
+        if key in schema:
+            for sub_schema in schema[key]:
+                _ensure_additional_properties_false(sub_schema)
+
+    return schema
+
+
 class LLMRequestsDBMixin:
     """Mixin for executing LLM requests via HTTP.
 
@@ -146,7 +182,8 @@ class LLMRequestsDBMixin:
         Returns:
             JSON schema dict
         """
-        return model_class.model_json_schema()
+        schema = model_class.model_json_schema()
+        return _ensure_additional_properties_false(schema)
 
     def _get_llm_model(self, model_id: str) -> LLMModelVersion:
         """Get LLM model metadata by model ID.
@@ -415,6 +452,7 @@ class LLMRequestsDBMixin:
                             f"response_schema must be a Pydantic/SQLModel class or a dict, "
                             f"got {type(response_schema_input)}"
                         )
+                    _ensure_additional_properties_false(schema_dict)
                     response_schema_json = json.dumps(schema_dict)
 
                 llm_request = LLMRequest(
