@@ -77,6 +77,18 @@ def create_object_app(
         obj.convert(replace=False)
         logger.info(f"Successfully saved {obj_class.id}")
 
+    @object_app.command(name="delete", epilog=epilog)
+    def delete_cmd(
+        version: Annotated[str, typer.Option("--version", help="Version to delete")],
+    ) -> None:
+        """Delete the data object and all its formats."""
+        version_enum = get_version_enum(obj_class, version)
+        obj = obj_class(version_enum)
+
+        logger.info(f"Deleting {obj_class.id} (version: {version})")
+        obj.delete()
+        logger.info(f"Successfully deleted {obj_class.id} (version: {version})")
+
     has_requests = (
         hasattr(obj_class, "_populate_http_requests")
         or hasattr(obj_class, "_populate_llm_requests")

@@ -6,6 +6,7 @@
 - Fix `retry` in requests when failed retries get duplicated
 - tests: Add `tests` to test package directly, not via examples
 - Add `DataObject.exists()` method to check master copy's availability
+- Add `delete` command to object manager scripts
 
 ## 0.1.4
 

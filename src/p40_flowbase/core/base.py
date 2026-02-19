@@ -277,3 +277,15 @@ class DataObject(ABC):
         if self.local_dir.exists():
             shutil.rmtree(self.local_dir)
             logger.info(f"Deleted existing formats for {self.object_stem}")
+
+    def delete(self) -> None:
+        """Delete the master copy and all format copies of this data object.
+
+        Raises:
+            FileNotFoundError: If no data exists for this object version.
+        """
+        if not self.local_dir.exists():
+            raise FileNotFoundError(
+                f"No data found for {self.object_stem}. Nothing to delete."
+            )
+        self._delete_existing_formats()
