@@ -49,6 +49,9 @@ class AgentTasksDBMixin:
         Set API keys via the set_api_keys classmethod before execution.
     """
 
+    default_rate_limit: float = 1.0
+    default_rate_period: float = 1.0
+
     # API keys - should be set by project config
     _openai_api_key: Optional[str] = None
     _anthropic_api_key: Optional[str] = None
@@ -83,44 +86,44 @@ class AgentTasksDBMixin:
     async def execute(
         self,
         group_id: Optional[uuid.UUID] = None,
-        rate_limit: float = 1.0,
-        rate_period: float = 1.0,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
     ) -> List[AgentTask]:
         """Execute pending agent tasks.
 
         Args:
             group_id: If provided, only execute tasks from this group.
-            rate_limit: Maximum tasks per rate_period.
-            rate_period: Time period in seconds for rate limiting.
+            rate_limit: Maximum tasks per rate_period. Defaults to self.default_rate_limit.
+            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
 
         Returns:
             List of executed AgentTask entries.
         """
         return await self._execute_pending_agent_tasks(
-            rate_limit=rate_limit,
-            rate_period=rate_period,
+            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
+            rate_period=rate_period if rate_period is not None else self.default_rate_period,
             agent_task_group_id=group_id,
         )
 
     async def retry(
         self,
         group_id: Optional[uuid.UUID] = None,
-        rate_limit: float = 1.0,
-        rate_period: float = 1.0,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
     ) -> List[AgentTask]:
         """Retry failed agent tasks.
 
         Args:
             group_id: If provided, only retry tasks from this group.
-            rate_limit: Maximum tasks per rate_period.
-            rate_period: Time period in seconds for rate limiting.
+            rate_limit: Maximum tasks per rate_period. Defaults to self.default_rate_limit.
+            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
 
         Returns:
             List of retried AgentTask entries.
         """
         return await self._retry_failed_agent_tasks(
-            rate_limit=rate_limit,
-            rate_period=rate_period,
+            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
+            rate_period=rate_period if rate_period is not None else self.default_rate_period,
             agent_task_group_id=group_id,
         )
 

@@ -8,6 +8,7 @@
 - Add `DataObject.exists()` method to check master copy's availability
 - Add `delete` command to object manager scripts
 - Fix `additionalProperties: false` issue in structured LLM output
+- Allow object-level defaults `rate_limit` and `rate_period` for requests
 
 ## 0.1.4
 

@@ -35,6 +35,9 @@ class HTTPRequestsDBMixin:
             Create and add HTTP requests, return the group_id.
     """
 
+    default_rate_limit: float = 5.0
+    default_rate_period: float = 1.0
+
     async def populate(self) -> uuid.UUID:
         """Populate HTTP requests based on object version and configuration.
 
@@ -50,44 +53,44 @@ class HTTPRequestsDBMixin:
     async def execute(
         self,
         group_id: Optional[uuid.UUID] = None,
-        rate_limit: float = 5.0,
-        rate_period: float = 1.0,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
     ):
         """Execute pending HTTP requests.
 
         Args:
             group_id: If provided, only execute requests from this group.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
+            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
+            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
 
         Returns:
             List of executed request entries.
         """
         return await self._execute_pending_http_requests(
-            rate_limit=rate_limit,
-            rate_period=rate_period,
+            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
+            rate_period=rate_period if rate_period is not None else self.default_rate_period,
             http_request_group_id=str(group_id) if group_id else None,
         )
 
     async def retry(
         self,
         group_id: Optional[uuid.UUID] = None,
-        rate_limit: float = 5.0,
-        rate_period: float = 1.0,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
     ):
         """Retry failed HTTP requests.
 
         Args:
             group_id: If provided, only retry requests from this group.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
+            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
+            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
 
         Returns:
             List of retried request entries.
         """
         return await self._retry_failed_http_requests(
-            rate_limit=rate_limit,
-            rate_period=rate_period,
+            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
+            rate_period=rate_period if rate_period is not None else self.default_rate_period,
             http_request_group_id=str(group_id) if group_id else None,
         )
 

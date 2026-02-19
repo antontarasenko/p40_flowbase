@@ -94,6 +94,9 @@ class LLMRequestsDBMixin:
         - config.settings.openai_api_key
     """
 
+    default_rate_limit: float = 1.0
+    default_rate_period: float = 1.0
+
     # API keys - should be set by project config
     _anthropic_api_key: Optional[str] = None
     _google_api_key: Optional[str] = None
@@ -132,44 +135,44 @@ class LLMRequestsDBMixin:
     async def execute(
         self,
         group_id: Optional[uuid.UUID] = None,
-        rate_limit: float = 1.0,
-        rate_period: float = 1.0,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
     ):
         """Execute pending LLM requests.
 
         Args:
             group_id: If provided, only execute requests from this group.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
+            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
+            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
 
         Returns:
             List of executed LLM request entries.
         """
         return await self._execute_pending_llm_requests(
-            rate_limit=rate_limit,
-            rate_period=rate_period,
+            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
+            rate_period=rate_period if rate_period is not None else self.default_rate_period,
             llm_request_group_id=str(group_id) if group_id else None,
         )
 
     async def retry(
         self,
         group_id: Optional[uuid.UUID] = None,
-        rate_limit: float = 1.0,
-        rate_period: float = 1.0,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
     ):
         """Retry failed LLM requests.
 
         Args:
             group_id: If provided, only retry requests from this group.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
+            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
+            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
 
         Returns:
             List of retried LLM request entries.
         """
         return await self._retry_failed_llm_requests(
-            rate_limit=rate_limit,
-            rate_period=rate_period,
+            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
+            rate_period=rate_period if rate_period is not None else self.default_rate_period,
             llm_request_group_id=str(group_id) if group_id else None,
         )
 

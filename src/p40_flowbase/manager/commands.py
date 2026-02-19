@@ -95,6 +95,9 @@ def create_object_app(
         or hasattr(obj_class, "_populate_agent_tasks")
     )
 
+    obj_rate_limit = getattr(obj_class, "default_rate_limit", 5.0)
+    obj_rate_period = getattr(obj_class, "default_rate_period", 1.0)
+
     if has_requests:
         @object_app.command(name="populate", epilog=epilog)
         def populate(
@@ -126,11 +129,11 @@ def create_object_app(
             rate_limit: Annotated[
                 float,
                 typer.Option("--rate-limit", help="Maximum requests per rate period"),
-            ] = 5.0,
+            ] = obj_rate_limit,
             rate_period: Annotated[
                 float,
                 typer.Option("--rate-period", help="Rate period in seconds"),
-            ] = 1.0,
+            ] = obj_rate_period,
         ) -> None:
             """Execute pending requests."""
             version_enum = get_version_enum(obj_class, version)
@@ -160,11 +163,11 @@ def create_object_app(
             rate_limit: Annotated[
                 float,
                 typer.Option("--rate-limit", help="Maximum requests per rate period"),
-            ] = 5.0,
+            ] = obj_rate_limit,
             rate_period: Annotated[
                 float,
                 typer.Option("--rate-period", help="Rate period in seconds"),
-            ] = 1.0,
+            ] = obj_rate_period,
         ) -> None:
             """Retry failed requests."""
             version_enum = get_version_enum(obj_class, version)
