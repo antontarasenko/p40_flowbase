@@ -1,5 +1,9 @@
 # Changelog
 
+## Branch `main`
+
+- Update `claude-agent-sdk` and `openai-agents` to later versions
+
 ## 0.1.4
 
 - Fix LLM model versions used in agent tasks
