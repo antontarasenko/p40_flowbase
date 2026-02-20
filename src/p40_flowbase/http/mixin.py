@@ -246,10 +246,17 @@ class HTTPRequestsDBMixin:
             executed = []
             successful_count = 0
             failed_count = 0
+            total_count = 0
             start_time = time.time()
 
             for completed_task in asyncio.as_completed(tasks):
-                result = await completed_task
+                total_count += 1
+                try:
+                    result = await completed_task
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"HTTP request failed with exception: {e}")
+                    continue
                 executed.append(result)
 
                 if result.response_status == 200:
@@ -257,19 +264,19 @@ class HTTPRequestsDBMixin:
                 else:
                     failed_count += 1
 
-                if len(executed) % 100 == 0:
+                if total_count % 100 == 0:
                     elapsed = time.time() - start_time
-                    effective_rps = len(executed) / elapsed if elapsed > 0 else 0
+                    effective_rps = total_count / elapsed if elapsed > 0 else 0
                     logger.info(
-                        f"Progress: {len(executed)} completed "
+                        f"Progress: {total_count} completed "
                         f"({successful_count} succeeded, {failed_count} failed), "
                         f"{elapsed:.1f}s elapsed, {effective_rps:.2f} RPS"
                     )
 
             elapsed = time.time() - start_time
-            effective_rps = len(executed) / elapsed if elapsed > 0 else 0
+            effective_rps = total_count / elapsed if elapsed > 0 else 0
             logger.info(
-                f"Completed processing {len(executed)} HTTP requests: "
+                f"Completed processing {total_count} HTTP requests: "
                 f"{successful_count} succeeded, {failed_count} failed, "
                 f"{elapsed:.1f}s total, {effective_rps:.2f} RPS"
             )
@@ -405,20 +412,26 @@ class HTTPRequestsDBMixin:
 
         async with aiohttp.ClientSession() as http_client:
             for row in rows:
-                async with limiter:
-                    new_request = await self._retry_single_http_request(
-                        http_client,
-                        row,
-                        ephemeral_headers,
-                    )
-                async with self.session_factory() as session:
-                    await session.execute(
-                        sqlalchemy.update(HTTPRequest)
-                        .where(
-                            HTTPRequest.http_request_id == row.http_request_id
+                try:
+                    async with limiter:
+                        new_request = await self._retry_single_http_request(
+                            http_client,
+                            row,
+                            ephemeral_headers,
                         )
-                        .values(superseded_by_id=new_request.http_request_id)
+                    async with self.session_factory() as session:
+                        await session.execute(
+                            sqlalchemy.update(HTTPRequest)
+                            .where(
+                                HTTPRequest.http_request_id == row.http_request_id
+                            )
+                            .values(superseded_by_id=new_request.http_request_id)
+                        )
+                        await session.commit()
+                except Exception as e:
+                    logger.error(
+                        f"HTTP retry failed for request {row.http_request_id}: {e}"
                     )
-                    await session.commit()
+                    continue
 
         return rows

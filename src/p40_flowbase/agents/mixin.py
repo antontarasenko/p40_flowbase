@@ -250,7 +250,7 @@ class AgentTasksDBMixin:
         if file_path == format_path:
             relative_path = "."
         else:
-            relative_path = str(file_path.relative_to(format_path))
+            relative_path = str(file_path.relative_to(local_dir))
 
         agent_file = AgentFile(
             name=file_path.name,
@@ -614,10 +614,17 @@ class AgentTasksDBMixin:
         executed = []
         successful_count = 0
         failed_count = 0
+        total_count = 0
         start_time = time.time()
 
         for completed_task in asyncio.as_completed(tasks):
-            result = await completed_task
+            total_count += 1
+            try:
+                result = await completed_task
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Agent task failed with exception: {e}")
+                continue
             executed.append(result)
 
             if not result.is_error:
@@ -625,19 +632,19 @@ class AgentTasksDBMixin:
             else:
                 failed_count += 1
 
-            if len(executed) % 10 == 0:
+            if total_count % 10 == 0:
                 elapsed = time.time() - start_time
-                effective_rps = len(executed) / elapsed if elapsed > 0 else 0
+                effective_rps = total_count / elapsed if elapsed > 0 else 0
                 logger.info(
-                    f"Progress: {len(executed)} completed "
+                    f"Progress: {total_count} completed "
                     f"({successful_count} succeeded, {failed_count} failed), "
                     f"{elapsed:.1f}s elapsed, {effective_rps:.2f} tasks/s"
                 )
 
         elapsed = time.time() - start_time
-        effective_rps = len(executed) / elapsed if elapsed > 0 else 0
+        effective_rps = total_count / elapsed if elapsed > 0 else 0
         logger.info(
-            f"Completed processing {len(executed)} agent tasks: "
+            f"Completed processing {total_count} agent tasks: "
             f"{successful_count} succeeded, {failed_count} failed, "
             f"{elapsed:.1f}s total, {effective_rps:.2f} tasks/s"
         )

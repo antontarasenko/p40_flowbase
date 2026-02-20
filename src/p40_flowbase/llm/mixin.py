@@ -511,7 +511,7 @@ class LLMRequestsDBMixin:
         if file_path == format_path:
             relative_path = "."
         else:
-            relative_path = str(file_path.relative_to(format_path))
+            relative_path = str(file_path.relative_to(local_dir))
 
         llm_file = LLMFile(
             name=file_path.name,
@@ -561,28 +561,40 @@ class LLMRequestsDBMixin:
                 file_result = await session.exec(file_statement)
                 llm_file = file_result.first()
 
-            if llm_file:
-                object_stem = (
-                    f"{llm_file.data_object_id}-{llm_file.data_object_version}"
+            if not llm_file:
+                logger.warning(
+                    f"LLM file record not found for ID {file_id}, "
+                    f"skipping attachment for request {llm_request.llm_request_id}"
                 )
-                local_dir = pathlib.Path(self.data_local_tmp) / object_stem
-                format_path = local_dir / f"{object_stem}.{llm_file.data_object_format}"
+                continue
 
-                if llm_file.local_tmp_path == ".":
-                    file_path = format_path
-                else:
-                    file_path = format_path / llm_file.local_tmp_path
+            object_stem = (
+                f"{llm_file.data_object_id}-{llm_file.data_object_version}"
+            )
+            local_dir = pathlib.Path(self.data_local_tmp) / object_stem
+            format_path = local_dir / f"{object_stem}.{llm_file.data_object_format}"
 
-                if file_path.exists():
-                    with open(file_path, "rb") as f:
-                        file_data = f.read()
-                    attachments_data.append(
-                        {
-                            "base64_data": base64.b64encode(file_data).decode(),
-                            "media_type": self._get_media_type(llm_file.name),
-                            "name": llm_file.name,
-                        }
-                    )
+            if llm_file.local_tmp_path == ".":
+                file_path = format_path
+            else:
+                file_path = local_dir / llm_file.local_tmp_path
+
+            if file_path.exists():
+                with open(file_path, "rb") as f:
+                    file_data = f.read()
+                attachments_data.append(
+                    {
+                        "base64_data": base64.b64encode(file_data).decode(),
+                        "media_type": self._get_media_type(llm_file.name),
+                        "name": llm_file.name,
+                    }
+                )
+            else:
+                logger.warning(
+                    f"Attachment file not found at {file_path} "
+                    f"for LLM file {llm_file.llm_file_id}, "
+                    f"skipping attachment for request {llm_request.llm_request_id}"
+                )
 
         return attachments_data
 
@@ -822,8 +834,13 @@ class LLMRequestsDBMixin:
         async with self.session_factory() as session:
             statement = select(LLMRequest).where(LLMRequest.requested_at_utc.is_(None))
             if llm_request_group_id is not None:
+                group_uuid = (
+                    uuid.UUID(llm_request_group_id)
+                    if isinstance(llm_request_group_id, str)
+                    else llm_request_group_id
+                )
                 statement = statement.where(
-                    LLMRequest.llm_request_group_id == llm_request_group_id
+                    LLMRequest.llm_request_group_id == group_uuid
                 )
             result = await session.exec(statement)
             llm_requests = result.all()
@@ -844,10 +861,17 @@ class LLMRequestsDBMixin:
             executed = []
             successful_count = 0
             failed_count = 0
+            total_count = 0
             start_time = time.time()
 
             for completed_task in asyncio.as_completed(tasks):
-                result = await completed_task
+                total_count += 1
+                try:
+                    result = await completed_task
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"LLM request failed with exception: {e}")
+                    continue
                 executed.append(result)
 
                 if result.response_text is not None:
@@ -855,19 +879,19 @@ class LLMRequestsDBMixin:
                 else:
                     failed_count += 1
 
-                if len(executed) % 100 == 0:
+                if total_count % 100 == 0:
                     elapsed = time.time() - start_time
-                    effective_rps = len(executed) / elapsed if elapsed > 0 else 0
+                    effective_rps = total_count / elapsed if elapsed > 0 else 0
                     logger.info(
-                        f"Progress: {len(executed)} completed "
+                        f"Progress: {total_count} completed "
                         f"({successful_count} succeeded, {failed_count} failed), "
                         f"{elapsed:.1f}s elapsed, {effective_rps:.2f} RPS"
                     )
 
             elapsed = time.time() - start_time
-            effective_rps = len(executed) / elapsed if elapsed > 0 else 0
+            effective_rps = total_count / elapsed if elapsed > 0 else 0
             logger.info(
-                f"Completed processing {len(executed)} LLM requests: "
+                f"Completed processing {total_count} LLM requests: "
                 f"{successful_count} succeeded, {failed_count} failed, "
                 f"{elapsed:.1f}s total, {effective_rps:.2f} RPS"
             )
@@ -904,8 +928,13 @@ class LLMRequestsDBMixin:
                 LLMRequest.superseded_by_id.is_(None),
             )
             if llm_request_group_id is not None:
+                group_uuid = (
+                    uuid.UUID(llm_request_group_id)
+                    if isinstance(llm_request_group_id, str)
+                    else llm_request_group_id
+                )
                 statement = statement.where(
-                    LLMRequest.llm_request_group_id == llm_request_group_id
+                    LLMRequest.llm_request_group_id == group_uuid
                 )
             result = await session.exec(statement)
             failed_requests = result.all()

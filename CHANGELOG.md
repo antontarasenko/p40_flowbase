@@ -9,6 +9,7 @@
 - Add `delete` command to object manager scripts
 - Fix `additionalProperties: false` issue in structured LLM output
 - Allow object-level defaults `rate_limit` and `rate_period` for requests
+- Fix misc issues across package (see commit for details)
 
 ## 0.1.4
 

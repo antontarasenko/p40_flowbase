@@ -46,9 +46,15 @@ class CompositeDataObject(DataObject):
             ["zstd", "-o", str(tar_zst_path)],
             stdin=tar_process.stdout,
         )
-        tar_process.stdout.close()
-        zstd_process.communicate()
-        tar_process.wait()
+        try:
+            tar_process.stdout.close()
+            zstd_process.communicate()
+            tar_process.wait()
+        finally:
+            for proc in (tar_process, zstd_process):
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
         if tar_process.returncode != 0 or zstd_process.returncode != 0:
             raise subprocess.CalledProcessError(
                 tar_process.returncode or zstd_process.returncode,

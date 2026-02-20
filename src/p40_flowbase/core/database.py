@@ -72,18 +72,46 @@ class DBDataObject(DataObject):
         return self.session_factory()
 
     async def _create_tables(self) -> None:
-        """Create all tables defined in schema."""
+        """Create tables defined in schema.
+
+        If schema is non-empty, only those tables are created. Otherwise
+        falls back to creating all tables registered with SQLModel.
+        """
         from sqlmodel import SQLModel as SQLModelBase
 
-        async with self.engine.begin() as conn:
-            await conn.run_sync(SQLModelBase.metadata.create_all)
+        tables = [
+            cls.__table__
+            for cls in self.schema
+            if hasattr(cls, "__table__")
+        ]
+        if tables:
+            async with self.engine.begin() as conn:
+                await conn.run_sync(
+                    SQLModelBase.metadata.create_all,
+                    tables=tables,
+                )
+        else:
+            async with self.engine.begin() as conn:
+                await conn.run_sync(SQLModelBase.metadata.create_all)
 
     async def _drop_tables(self) -> None:
         """Drop all tables defined in schema."""
         from sqlmodel import SQLModel as SQLModelBase
 
-        async with self.engine.begin() as conn:
-            await conn.run_sync(SQLModelBase.metadata.drop_all)
+        tables = [
+            cls.__table__
+            for cls in self.schema
+            if hasattr(cls, "__table__")
+        ]
+        if tables:
+            async with self.engine.begin() as conn:
+                await conn.run_sync(
+                    SQLModelBase.metadata.drop_all,
+                    tables=tables,
+                )
+        else:
+            async with self.engine.begin() as conn:
+                await conn.run_sync(SQLModelBase.metadata.drop_all)
 
     def _make_default(self) -> None:
         """Create and save the default format (database file)."""
@@ -94,13 +122,12 @@ class DBDataObject(DataObject):
 
         try:
             asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(_async_make())
+        else:
             raise RuntimeError(
                 "Cannot call make() from async context. Use await make_async() instead."
             )
-        except RuntimeError as e:
-            if "Cannot call make()" in str(e):
-                raise
-            asyncio.run(_async_make())
 
     async def make_async(self, replace: bool = False) -> None:
         """Async version of make() for use in async contexts.

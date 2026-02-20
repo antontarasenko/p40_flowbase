@@ -11,6 +11,10 @@ from datetime import (
 )
 from typing import Optional
 
+from sqlalchemy import (
+    Column,
+    Enum as SQLAEnum,
+)
 from sqlmodel import (
     Field,
     SQLModel,
@@ -89,7 +93,7 @@ class AgentTask(SQLModel, table=True):
     created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Configuration
-    model: AgentModels
+    model: AgentModels = Field(sa_column=Column(SQLAEnum(AgentModels)))
     system_prompt: Optional[str] = None
     task_prompt: str
     allowed_tools: Optional[str] = None
