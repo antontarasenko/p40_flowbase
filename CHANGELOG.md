@@ -12,6 +12,7 @@
 - Fix misc issues across package (see commit for details)
 - Add support for recursive tasks and requests via LangGraph orchestration
 - Move `agents` and `langgraph` dependencies to main dependencies
+- Update `claude-agent-sdk` and `openai-agents` to their latest versions
 
 ## 0.1.4
 
