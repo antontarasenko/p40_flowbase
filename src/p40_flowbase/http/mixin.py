@@ -14,6 +14,7 @@ from datetime import (
 )
 from typing import (
     Any,
+    Callable,
     Dict,
     List,
     Optional,
@@ -435,3 +436,155 @@ class HTTPRequestsDBMixin:
                     continue
 
         return rows
+
+    async def _get_http_wave_results(
+        self,
+        group_id: uuid.UUID,
+    ) -> List[HTTPRequest]:
+        """Get non-superseded HTTP requests for a group.
+
+        Args:
+            group_id: The request group UUID.
+
+        Returns:
+            List of HTTPRequest entries that have not been superseded.
+        """
+        from sqlmodel import select
+
+        async with self.session_factory() as session:
+            statement = select(HTTPRequest).where(
+                HTTPRequest.http_request_group_id == group_id,
+                HTTPRequest.superseded_by_id.is_(None),
+            )
+            result = await session.exec(statement)
+            return result.all()
+
+    async def _execute_http_request_graph(
+        self,
+        lanes: List[str],
+        num_steps: int,
+        populate_step: Callable,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
+        max_retries: int = 1,
+        checkpointer: Optional[Any] = None,
+        thread_id: Optional[str] = None,
+    ) -> Dict[str, List[list]]:
+        """Execute a parallel-lane, sequential-step graph for HTTP requests.
+
+        Args:
+            lanes: List of lane identifiers.
+            num_steps: Number of sequential steps per lane.
+            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
+            rate_limit: Maximum requests per rate_period.
+            rate_period: Time period in seconds for rate limiting.
+            max_retries: Maximum retry attempts per step.
+            checkpointer: Optional LangGraph checkpointer.
+            thread_id: Thread ID for checkpointer resumability.
+
+        Returns:
+            Dict mapping lane_id to list of step results (each a list of HTTPRequest).
+        """
+        try:
+            from p40_flowbase.orchestration.graphs import (
+                build_recursive_task_graph,
+            )
+        except ImportError:
+            raise ImportError(
+                "LangGraph integration requires the 'langgraph' extra. "
+                "Install with: pip install p40_flowbase[langgraph]"
+            )
+
+        effective_rate_limit = rate_limit if rate_limit is not None else self.default_rate_limit
+        effective_rate_period = rate_period if rate_period is not None else self.default_rate_period
+
+        async def execute_pending_wrapper(group_id_str: str) -> list:
+            return await self._execute_pending_http_requests(
+                rate_limit=effective_rate_limit,
+                rate_period=effective_rate_period,
+                http_request_group_id=group_id_str,
+            )
+
+        async def retry_failed_wrapper(group_id_str: str) -> list:
+            return await self._retry_failed_http_requests(
+                rate_limit=effective_rate_limit,
+                rate_period=effective_rate_period,
+                http_request_group_id=group_id_str,
+            )
+
+        async def get_wave_results_wrapper(group_id: uuid.UUID) -> list:
+            return await self._get_http_wave_results(group_id=group_id)
+
+        graph = build_recursive_task_graph(
+            populate_step=populate_step,
+            execute_pending=execute_pending_wrapper,
+            retry_failed=retry_failed_wrapper,
+            get_wave_results=get_wave_results_wrapper,
+            checkpointer=checkpointer,
+        )
+
+        config = {}
+        if thread_id is not None or checkpointer is not None:
+            config["configurable"] = {
+                "thread_id": thread_id or uuid.uuid4().hex,
+            }
+
+        result = await graph.ainvoke(
+            {
+                "lanes": lanes,
+                "num_steps": num_steps,
+                "max_retries": max_retries,
+                "lane_results": [],
+            },
+            config=config if config else None,
+        )
+
+        return result.get("organized_results", {})
+
+    async def execute_graph(
+        self,
+        lanes: List[str],
+        num_steps: int,
+        populate_step: Optional[Callable] = None,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
+        max_retries: int = 1,
+        checkpointer: Optional[Any] = None,
+        thread_id: Optional[str] = None,
+    ) -> Dict[str, List[list]]:
+        """Execute a parallel-lane, sequential-step graph for HTTP requests.
+
+        Convenience method that defaults populate_step to self._populate_lane_step.
+
+        Args:
+            lanes: List of lane identifiers.
+            num_steps: Number of sequential steps per lane.
+            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
+                Defaults to self._populate_lane_step if not provided.
+            rate_limit: Maximum requests per rate_period.
+            rate_period: Time period in seconds for rate limiting.
+            max_retries: Maximum retry attempts per step.
+            checkpointer: Optional LangGraph checkpointer.
+            thread_id: Thread ID for checkpointer resumability.
+
+        Returns:
+            Dict mapping lane_id to list of step results (each a list of HTTPRequest).
+        """
+        if populate_step is None:
+            if not hasattr(self, "_populate_lane_step"):
+                raise NotImplementedError(
+                    f"{self.__class__.__name__} must implement _populate_lane_step() "
+                    "or pass populate_step argument"
+                )
+            populate_step = self._populate_lane_step
+
+        return await self._execute_http_request_graph(
+            lanes=lanes,
+            num_steps=num_steps,
+            populate_step=populate_step,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
+            max_retries=max_retries,
+            checkpointer=checkpointer,
+            thread_id=thread_id,
+        )

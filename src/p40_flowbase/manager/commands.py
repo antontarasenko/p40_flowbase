@@ -184,4 +184,66 @@ def create_object_app(
             )
             logger.info(f"Successfully retried requests for {obj_class.id}")
 
+    has_lane_step = hasattr(obj_class, "_populate_lane_step")
+
+    if has_lane_step:
+        @object_app.command(name="execute-graph", epilog=epilog)
+        def execute_graph_cmd(
+            version: Annotated[
+                str,
+                typer.Option("--version", help="Version to execute graph for"),
+            ],
+            lanes: Annotated[
+                str,
+                typer.Option(
+                    "--lanes",
+                    help="Comma-separated lane identifiers",
+                ),
+            ],
+            num_steps: Annotated[
+                int,
+                typer.Option("--num-steps", help="Number of sequential steps per lane"),
+            ],
+            rate_limit: Annotated[
+                float,
+                typer.Option("--rate-limit", help="Maximum requests per rate period"),
+            ] = obj_rate_limit,
+            rate_period: Annotated[
+                float,
+                typer.Option("--rate-period", help="Rate period in seconds"),
+            ] = obj_rate_period,
+            max_retries: Annotated[
+                int,
+                typer.Option("--max-retries", help="Maximum retry attempts per step"),
+            ] = 1,
+        ) -> None:
+            """Execute a parallel-lane, sequential-step graph."""
+            version_enum = get_version_enum(obj_class, version)
+            obj = obj_class(version_enum)
+
+            lane_list = [lane.strip() for lane in lanes.split(",") if lane.strip()]
+
+            logger.info(
+                f"Executing graph for {obj_class.id} (version: {version}), "
+                f"{len(lane_list)} lanes, {num_steps} steps"
+            )
+            results = asyncio.run(
+                obj.execute_graph(
+                    lanes=lane_list,
+                    num_steps=num_steps,
+                    rate_limit=rate_limit,
+                    rate_period=rate_period,
+                    max_retries=max_retries,
+                )
+            )
+            total_results = sum(
+                len(step_results)
+                for lane_results in results.values()
+                for step_results in lane_results
+            )
+            logger.info(
+                f"Successfully executed graph for {obj_class.id}: "
+                f"{len(results)} lanes, {total_results} total results"
+            )
+
     return object_app

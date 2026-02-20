@@ -15,6 +15,7 @@ from datetime import (
 )
 from typing import (
     Any,
+    Callable,
     Dict,
     List,
     Optional,
@@ -978,4 +979,156 @@ class LLMRequestsDBMixin:
             rate_period=rate_period,
             llm_request_group_id=llm_request_group_id,
             ephemeral_headers=ephemeral_headers,
+        )
+
+    async def _get_llm_wave_results(
+        self,
+        group_id: uuid.UUID,
+    ) -> List[LLMRequest]:
+        """Get non-superseded LLM requests for a group.
+
+        Args:
+            group_id: The request group UUID.
+
+        Returns:
+            List of LLMRequest entries that have not been superseded.
+        """
+        from sqlmodel import select
+
+        async with self.session_factory() as session:
+            statement = select(LLMRequest).where(
+                LLMRequest.llm_request_group_id == group_id,
+                LLMRequest.superseded_by_id.is_(None),
+            )
+            result = await session.exec(statement)
+            return result.all()
+
+    async def _execute_llm_request_graph(
+        self,
+        lanes: List[str],
+        num_steps: int,
+        populate_step: Callable,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
+        max_retries: int = 1,
+        checkpointer: Optional[Any] = None,
+        thread_id: Optional[str] = None,
+    ) -> Dict[str, List[list]]:
+        """Execute a parallel-lane, sequential-step graph for LLM requests.
+
+        Args:
+            lanes: List of lane identifiers.
+            num_steps: Number of sequential steps per lane.
+            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
+            rate_limit: Maximum requests per rate_period.
+            rate_period: Time period in seconds for rate limiting.
+            max_retries: Maximum retry attempts per step.
+            checkpointer: Optional LangGraph checkpointer.
+            thread_id: Thread ID for checkpointer resumability.
+
+        Returns:
+            Dict mapping lane_id to list of step results (each a list of LLMRequest).
+        """
+        try:
+            from p40_flowbase.orchestration.graphs import (
+                build_recursive_task_graph,
+            )
+        except ImportError:
+            raise ImportError(
+                "LangGraph integration requires the 'langgraph' extra. "
+                "Install with: pip install p40_flowbase[langgraph]"
+            )
+
+        effective_rate_limit = rate_limit if rate_limit is not None else self.default_rate_limit
+        effective_rate_period = rate_period if rate_period is not None else self.default_rate_period
+
+        async def execute_pending_wrapper(group_id_str: str) -> list:
+            return await self._execute_pending_llm_requests(
+                rate_limit=effective_rate_limit,
+                rate_period=effective_rate_period,
+                llm_request_group_id=group_id_str,
+            )
+
+        async def retry_failed_wrapper(group_id_str: str) -> list:
+            return await self._retry_failed_llm_requests(
+                rate_limit=effective_rate_limit,
+                rate_period=effective_rate_period,
+                llm_request_group_id=group_id_str,
+            )
+
+        async def get_wave_results_wrapper(group_id: uuid.UUID) -> list:
+            return await self._get_llm_wave_results(group_id=group_id)
+
+        graph = build_recursive_task_graph(
+            populate_step=populate_step,
+            execute_pending=execute_pending_wrapper,
+            retry_failed=retry_failed_wrapper,
+            get_wave_results=get_wave_results_wrapper,
+            checkpointer=checkpointer,
+        )
+
+        config = {}
+        if thread_id is not None or checkpointer is not None:
+            config["configurable"] = {
+                "thread_id": thread_id or uuid.uuid4().hex,
+            }
+
+        result = await graph.ainvoke(
+            {
+                "lanes": lanes,
+                "num_steps": num_steps,
+                "max_retries": max_retries,
+                "lane_results": [],
+            },
+            config=config if config else None,
+        )
+
+        return result.get("organized_results", {})
+
+    async def execute_graph(
+        self,
+        lanes: List[str],
+        num_steps: int,
+        populate_step: Optional[Callable] = None,
+        rate_limit: Optional[float] = None,
+        rate_period: Optional[float] = None,
+        max_retries: int = 1,
+        checkpointer: Optional[Any] = None,
+        thread_id: Optional[str] = None,
+    ) -> Dict[str, List[list]]:
+        """Execute a parallel-lane, sequential-step graph for LLM requests.
+
+        Convenience method that defaults populate_step to self._populate_lane_step.
+
+        Args:
+            lanes: List of lane identifiers.
+            num_steps: Number of sequential steps per lane.
+            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
+                Defaults to self._populate_lane_step if not provided.
+            rate_limit: Maximum requests per rate_period.
+            rate_period: Time period in seconds for rate limiting.
+            max_retries: Maximum retry attempts per step.
+            checkpointer: Optional LangGraph checkpointer.
+            thread_id: Thread ID for checkpointer resumability.
+
+        Returns:
+            Dict mapping lane_id to list of step results (each a list of LLMRequest).
+        """
+        if populate_step is None:
+            if not hasattr(self, "_populate_lane_step"):
+                raise NotImplementedError(
+                    f"{self.__class__.__name__} must implement _populate_lane_step() "
+                    "or pass populate_step argument"
+                )
+            populate_step = self._populate_lane_step
+
+        return await self._execute_llm_request_graph(
+            lanes=lanes,
+            num_steps=num_steps,
+            populate_step=populate_step,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
+            max_retries=max_retries,
+            checkpointer=checkpointer,
+            thread_id=thread_id,
         )

@@ -10,6 +10,7 @@
 - Fix `additionalProperties: false` issue in structured LLM output
 - Allow object-level defaults `rate_limit` and `rate_period` for requests
 - Fix misc issues across package (see commit for details)
+- Add support for recursive tasks and requests via LangGraph orchestration
 
 ## 0.1.4
 
