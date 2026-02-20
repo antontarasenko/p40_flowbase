@@ -1029,15 +1029,9 @@ class LLMRequestsDBMixin:
         Returns:
             Dict mapping lane_id to list of step results (each a list of LLMRequest).
         """
-        try:
-            from p40_flowbase.orchestration.graphs import (
-                build_recursive_task_graph,
-            )
-        except ImportError:
-            raise ImportError(
-                "LangGraph integration requires the 'langgraph' extra. "
-                "Install with: pip install p40_flowbase[langgraph]"
-            )
+        from p40_flowbase.orchestration.graphs import (
+            build_recursive_task_graph,
+        )
 
         effective_rate_limit = rate_limit if rate_limit is not None else self.default_rate_limit
         effective_rate_period = rate_period if rate_period is not None else self.default_rate_period

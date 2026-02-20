@@ -11,6 +11,7 @@
 - Allow object-level defaults `rate_limit` and `rate_period` for requests
 - Fix misc issues across package (see commit for details)
 - Add support for recursive tasks and requests via LangGraph orchestration
+- Move `agents` and `langgraph` dependencies to main dependencies
 
 ## 0.1.4
 

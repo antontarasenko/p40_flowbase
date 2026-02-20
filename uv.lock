@@ -1354,10 +1354,13 @@ dependencies = [
     { name = "aiohttp" },
     { name = "aiolimiter" },
     { name = "aiosqlite" },
+    { name = "claude-agent-sdk" },
     { name = "jinja2" },
     { name = "joblib" },
+    { name = "langgraph" },
     { name = "matplotlib" },
     { name = "numpy" },
+    { name = "openai-agents" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pyarrow" },
@@ -1368,15 +1371,6 @@ dependencies = [
     { name = "sqlmodel" },
     { name = "tabulate" },
     { name = "typer" },
-]
-
-[package.optional-dependencies]
-agents = [
-    { name = "claude-agent-sdk" },
-    { name = "openai-agents" },
-]
-langgraph = [
-    { name = "langgraph" },
 ]
 
 [package.dev-dependencies]
@@ -1394,13 +1388,13 @@ requires-dist = [
     { name = "aiohttp", specifier = "~=3.13.2" },
     { name = "aiolimiter", specifier = "~=1.2.1" },
     { name = "aiosqlite", specifier = "~=0.21.0" },
-    { name = "claude-agent-sdk", marker = "extra == 'agents'", specifier = "~=0.1.22" },
+    { name = "claude-agent-sdk", specifier = "~=0.1.22" },
     { name = "jinja2", specifier = "~=3.1.6" },
     { name = "joblib", specifier = "~=1.5.2" },
-    { name = "langgraph", marker = "extra == 'langgraph'", specifier = "~=1.0.9" },
+    { name = "langgraph", specifier = "~=1.0.9" },
     { name = "matplotlib", specifier = "~=3.10.5" },
     { name = "numpy", specifier = "~=2.3.5" },
-    { name = "openai-agents", marker = "extra == 'agents'", specifier = "~=0.7.0" },
+    { name = "openai-agents", specifier = "~=0.7.0" },
     { name = "openpyxl", specifier = "~=3.1.5" },
     { name = "pandas", specifier = "~=2.3.3" },
     { name = "pyarrow", specifier = "~=22.0.0" },
@@ -1412,7 +1406,6 @@ requires-dist = [
     { name = "tabulate", specifier = "~=0.9.0" },
     { name = "typer", specifier = "~=0.19.2" },
 ]
-provides-extras = ["agents", "langgraph"]
 
 [package.metadata.requires-dev]
 dev = [
