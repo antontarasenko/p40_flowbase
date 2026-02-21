@@ -119,9 +119,14 @@ def build_recursive_task_graph(
     # --- Lane subgraph ---
 
     async def process_step(state: dict) -> dict:
-        """Execute populate + execute + retry for one lane-step."""
+        """Execute populate + execute + retry for one lane-step.
+
+        Returns the full state dict (not partial) because StateGraph(dict)
+        replaces state on node output rather than merging.
+        """
         lane_id = state["lane_id"]
         step_index = state["step_index"]
+        num_steps = state["num_steps"]
         previous_step_results = state.get("previous_step_results", [])
         max_retries = state.get("max_retries", 1)
 
@@ -138,9 +143,10 @@ def build_recursive_task_graph(
                 f"Lane '{lane_id}': step {step_index} skipped (populate returned None)"
             )
             return {
+                **state,
                 "step_index": step_index + 1,
                 "previous_step_results": [],
-                "all_step_results": [
+                "all_step_results": state.get("all_step_results", []) + [
                     {"lane_id": lane_id, "step_index": step_index, "results": []},
                 ],
             }
@@ -168,9 +174,10 @@ def build_recursive_task_graph(
         )
 
         return {
+            **state,
             "step_index": step_index + 1,
             "previous_step_results": results,
-            "all_step_results": [
+            "all_step_results": state.get("all_step_results", []) + [
                 {"lane_id": lane_id, "step_index": step_index, "results": results},
             ],
         }

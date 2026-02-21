@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Fix `process_step` in graph operations
+
 ## 0.2.1 (2026-02-21)
 
 - Enable versioning with `setuptools-scm`
