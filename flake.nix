@@ -52,7 +52,7 @@
     # so we set the version explicitly for the package build.
     scmVersionOverlay = final: prev: {
       p40-flowbase = prev.p40-flowbase.overrideAttrs (old: {
-        version = "0.2.1";
+        version = "0.2.2";
         __intentionallyOverridingVersion = true;
       });
     };

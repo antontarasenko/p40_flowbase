@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.2.2 (2026-02-21)
+
 - Fix `process_step` in graph operations
 
 ## 0.2.1 (2026-02-21)
