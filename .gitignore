@@ -4,7 +4,7 @@
 
 /.direnv/
 /.env
-/.envrc
+#/.envrc
 
 ################################################################################
 # Nix.gitignore
@@ -172,7 +172,7 @@ activemq-data/
 
 # Environments
 .env
-.envrc
+#.envrc
 .venv
 env/
 venv/
