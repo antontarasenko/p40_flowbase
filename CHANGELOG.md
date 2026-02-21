@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.2.1 (2026-02-21)
+
 - Enable versioning with `setuptools-scm`
 
 ## 0.2.0 (2026-02-21)
