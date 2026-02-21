@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.2.0 (2026-02-21)
+
 - Update `claude-agent-sdk` and `openai-agents` to later versions
 - Fix `retry` in requests when failed retries get duplicated
 - tests: Add `tests` to test package directly, not via examples
