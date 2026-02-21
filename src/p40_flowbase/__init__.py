@@ -67,7 +67,9 @@ from p40_flowbase.styles import (
     STYLES,
     apply_style,
 )
-from p40_flowbase.version import __version__
+from importlib.metadata import version
+
+__version__ = version("p40_flowbase")
 
 __all__ = [
     "AgentFile",

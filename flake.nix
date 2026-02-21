@@ -48,6 +48,15 @@
       sourcePreference = "wheel";
     };
 
+    # setuptools-scm can't resolve git tags inside the Nix sandbox,
+    # so we set the version explicitly for the package build.
+    scmVersionOverlay = final: prev: {
+      p40-flowbase = prev.p40-flowbase.overrideAttrs (old: {
+        version = "0.2.0";
+        __intentionallyOverridingVersion = true;
+      });
+    };
+
     editableOverlay = workspace.mkEditablePyprojectOverlay {
       root = "$REPO_ROOT";
     };
@@ -65,6 +74,7 @@
         lib.composeManyExtensions [
           pyproject-build-systems.overlays.default
           overlay
+          scmVersionOverlay
         ]
       )
     );
@@ -76,7 +86,7 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
       in {
-        inherit overlay;
+        inherit overlay scmVersionOverlay;
 
         mkPythonSet = { python }:
           (pkgs.callPackage pyproject-nix.build.packages {
@@ -85,6 +95,7 @@
             lib.composeManyExtensions [
               pyproject-build-systems.overlays.default
               overlay
+              scmVersionOverlay
             ]
           );
 
@@ -96,6 +107,7 @@
               lib.composeManyExtensions [
                 pyproject-build-systems.overlays.default
                 overlay
+                scmVersionOverlay
               ]
             );
             deps = {
@@ -115,7 +127,12 @@
     devShells = forAllSystems (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        pythonSet = pythonSets.${system}.overrideScope editableOverlay;
+        pythonSet = pythonSets.${system}.overrideScope (
+          lib.composeManyExtensions [
+            editableOverlay
+            scmVersionOverlay
+          ]
+        );
         virtualenv = pythonSet.mkVirtualEnv "p40-flowbase-dev-env" workspace.deps.all;
       in {
         default = pkgs.mkShell {

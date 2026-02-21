@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "p40_flowbase"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Data pipeline framework"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -84,6 +84,10 @@ extend-exclude = '''
   | dist
 )/
 '''
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "no-local-version"
 
 [tool.ruff]
 line-length = 88

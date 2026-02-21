@@ -2,7 +2,7 @@ S3_BUCKET := s3://antontarasenko
 S3_BUCKET_URL := https://antontarasenko.s3.amazonaws.com
 S3_PYTHON_PREFIX := registry/p40_flowbase/Id0E3qM8Nx/python
 S3_FLAKE_PREFIX := registry/p40_flowbase/Id0E3qM8Nx/nix-flakes
-VERSION := $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
 SYSTEM := $(shell nix eval --impure --raw --expr 'builtins.currentSystem')
 
 WHEEL_NAME := p40_flowbase-$(VERSION)-py3-none-any.whl

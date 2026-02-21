@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Enable versioning with `setuptools-scm`
+
 ## 0.2.0 (2026-02-21)
 
 - Update `claude-agent-sdk` and `openai-agents` to later versions
