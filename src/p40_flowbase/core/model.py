@@ -8,7 +8,6 @@ import pickle
 from abc import abstractmethod
 from typing import (
     Any,
-    Optional,
 )
 
 import joblib
@@ -33,7 +32,7 @@ class ModelDataObject(DataObject):
 
     def __init__(self, version):
         super().__init__(version)
-        self._model: Optional[Any] = None
+        self._model: Any | None = None
 
     @property
     def model(self) -> Any:

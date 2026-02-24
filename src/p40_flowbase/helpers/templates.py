@@ -7,7 +7,6 @@ Copyright (c) 2025 Anton Tarasenko
 import importlib.resources
 from typing import (
     Any,
-    Optional,
 )
 
 import jinja2
@@ -15,7 +14,7 @@ import jinja2
 
 def render_prompt_template(
     template_name: str,
-    project_package: Optional[str] = None,
+    project_package: str | None = None,
     **kwargs: Any,
 ) -> str:
     """Render a Jinja template from a prompts directory.

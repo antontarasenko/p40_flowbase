@@ -9,7 +9,6 @@ from datetime import (
     UTC,
     datetime,
 )
-from typing import Optional
 
 from sqlmodel import (
     Field,
@@ -57,27 +56,27 @@ class HTTPRequest(SQLModel, table=True):
         default_factory=uuid.uuid4,
         primary_key=True,
     )
-    http_request_group_id: Optional[uuid.UUID] = Field(
+    http_request_group_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="http_request_groups.http_request_group_id",
     )
-    http_request_extra_id: Optional[uuid.UUID] = Field(
+    http_request_extra_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="http_requests_extra.http_request_extra_id",
     )
 
     request_url: str
     request_method: str
-    request_headers: Optional[str] = None
-    request_body: Optional[str] = None
+    request_headers: str | None = None
+    request_body: str | None = None
 
-    response_status: Optional[int] = None
-    response_headers: Optional[str] = None
-    response_body_text: Optional[str] = None
-    response_size: Optional[int] = None
+    response_status: int | None = None
+    response_headers: str | None = None
+    response_body_text: str | None = None
+    response_size: int | None = None
 
-    latency: Optional[float] = None
+    latency: float | None = None
 
     created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    requested_at_utc: Optional[datetime] = None
-    superseded_by_id: Optional[uuid.UUID] = None
+    requested_at_utc: datetime | None = None
+    superseded_by_id: uuid.UUID | None = None

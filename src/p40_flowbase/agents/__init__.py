@@ -14,8 +14,8 @@ from p40_flowbase.agents.models import (
     AgentToolCall,
 )
 from p40_flowbase.agents.providers import (
-    AgentModelVersion,
     AgentModels,
+    AgentModelVersion,
     AgentProviders,
 )
 

@@ -5,10 +5,6 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import pathlib
-from typing import (
-    List,
-    Type,
-)
 
 import typer
 
@@ -37,7 +33,7 @@ def get_existing_formats(
     object_id: str,
     version: str,
     data_local_tmp: str,
-) -> List[str]:
+) -> list[str]:
     """Get list of existing format extensions for a data object version.
 
     Args:
@@ -67,7 +63,7 @@ def get_existing_formats(
     return sorted(set(formats))
 
 
-def get_version_enum(object_class: Type, version_id: str):
+def get_version_enum(object_class: type, version_id: str):
     """Get the version enum member for a given version ID.
 
     Args:
@@ -91,7 +87,7 @@ def get_version_enum(object_class: Type, version_id: str):
 
 
 def format_versions_help(
-    obj_class: Type,
+    obj_class: type,
     data_local_tmp: str,
 ) -> str:
     """Generate versions help text for an object class.

@@ -9,10 +9,11 @@ from datetime import (
     UTC,
     datetime,
 )
-from typing import Optional
 
 from sqlalchemy import (
     Column,
+)
+from sqlalchemy import (
     Enum as SQLAEnum,
 )
 from sqlmodel import (
@@ -94,42 +95,42 @@ class AgentTask(SQLModel, table=True):
 
     # Configuration
     model: AgentModels = Field(sa_column=Column(SQLAEnum(AgentModels)))
-    system_prompt: Optional[str] = None
+    system_prompt: str | None = None
     task_prompt: str
-    allowed_tools: Optional[str] = None
-    max_turns: Optional[int] = None
-    working_directory: Optional[str] = None
-    output_format: Optional[str] = None
+    allowed_tools: str | None = None
+    max_turns: int | None = None
+    working_directory: str | None = None
+    output_format: str | None = None
 
     # Attachments
-    attachments: Optional[str] = None
+    attachments: str | None = None
 
     # Custom tools
     enable_custom_tools: bool = False
-    mcp_server_config: Optional[str] = None
+    mcp_server_config: str | None = None
 
     # Grouping
-    agent_task_group_id: Optional[uuid.UUID] = Field(
+    agent_task_group_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="agent_task_groups.agent_task_group_id",
     )
-    agent_task_extra_id: Optional[uuid.UUID] = Field(
+    agent_task_extra_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="agent_task_extra.agent_task_extra_id",
     )
 
     # Execution tracking
-    started_at_utc: Optional[datetime] = None
-    completed_at_utc: Optional[datetime] = None
+    started_at_utc: datetime | None = None
+    completed_at_utc: datetime | None = None
 
     # Output
-    final_response: Optional[str] = None
-    num_turns: Optional[int] = None
-    duration_ms: Optional[int] = None
-    total_cost_usd: Optional[float] = None
+    final_response: str | None = None
+    num_turns: int | None = None
+    duration_ms: int | None = None
+    total_cost_usd: float | None = None
     is_error: bool = False
-    error_message: Optional[str] = None
-    superseded_by_id: Optional[uuid.UUID] = None
+    error_message: str | None = None
+    superseded_by_id: uuid.UUID | None = None
 
 
 class AgentToolCall(SQLModel, table=True):
@@ -150,7 +151,7 @@ class AgentToolCall(SQLModel, table=True):
     turn_number: int
     tool_name: str
     tool_input: str
-    tool_output: Optional[str] = None
+    tool_output: str | None = None
     is_error: bool = False
 
     created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -11,7 +11,7 @@ from typing import (
 
 import matplotlib.pyplot as plt
 
-STYLES: Dict[str, Dict[str, Any]] = {
+STYLES: dict[str, dict[str, Any]] = {
     "style_1": {
         "beamer": {
             "theme": "metropolis",

@@ -33,10 +33,6 @@ from enum import (
     Enum,
     StrEnum,
 )
-from typing import (
-    List,
-    Tuple,
-)
 
 from p40_flowbase.logging import logger
 
@@ -81,7 +77,7 @@ class DataObject(ABC):
     description: str
     version: Enum
     make_format: StrEnum
-    supported_versions: Tuple = ()
+    supported_versions: tuple = ()
 
     # Must be set by project config
     _data_local_tmp: str | None = None
@@ -170,7 +166,7 @@ class DataObject(ABC):
                 format_path.unlink()
             logger.info(f"Deleted format '{fmt.value}' for {self.object_stem}")
 
-    def _convert_formats(self, formats_to_create: List[StrEnum]) -> None:
+    def _convert_formats(self, formats_to_create: list[StrEnum]) -> None:
         """Convert default format to other requested formats.
 
         Args:

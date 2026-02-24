@@ -5,7 +5,6 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import pickle
-from typing import Optional
 
 import matplotlib.pyplot as plt
 
@@ -29,7 +28,7 @@ class FigureDataObject(DataObject):
 
     def __init__(self, version):
         super().__init__(version)
-        self._mplf: Optional[plt.Figure] = None
+        self._mplf: plt.Figure | None = None
 
     @property
     def mplf(self) -> plt.Figure:

@@ -9,10 +9,11 @@ from datetime import (
     UTC,
     datetime,
 )
-from typing import Optional
 
 from sqlalchemy import (
     Column,
+)
+from sqlalchemy import (
     Enum as SQLAEnum,
 )
 from sqlmodel import (
@@ -88,32 +89,32 @@ class LLMRequest(SQLModel, table=True):
     created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     model: LLMModels = Field(sa_column=Column(SQLAEnum(LLMModels)))
-    temperature: Optional[float] = None
-    system_prompt: Optional[str] = None
-    user_prompt: Optional[str] = None
-    attachments: Optional[str] = None  # JSON list of llm_file_ids
-    response_schema: Optional[str] = None  # JSON schema for structured output
-    expected_input_cost_usd: Optional[float] = None
+    temperature: float | None = None
+    system_prompt: str | None = None
+    user_prompt: str | None = None
+    attachments: str | None = None  # JSON list of llm_file_ids
+    response_schema: str | None = None  # JSON schema for structured output
+    expected_input_cost_usd: float | None = None
 
-    http_request_id: Optional[uuid.UUID] = Field(
+    http_request_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="http_requests.http_request_id",
     )
 
-    response_text: Optional[str] = None
-    response_attachments: Optional[str] = None  # JSON list of llm_file_ids
+    response_text: str | None = None
+    response_attachments: str | None = None  # JSON list of llm_file_ids
 
-    llm_request_group_id: Optional[uuid.UUID] = Field(
+    llm_request_group_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="llm_request_groups.llm_request_group_id",
     )
-    llm_request_extra_id: Optional[uuid.UUID] = Field(
+    llm_request_extra_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="llm_requests_extra.llm_request_extra_id",
     )
 
-    requested_at_utc: Optional[datetime] = None
-    superseded_by_id: Optional[uuid.UUID] = None
+    requested_at_utc: datetime | None = None
+    superseded_by_id: uuid.UUID | None = None
 
     def model_post_init(self, __context):
         """Calculate expected_input_cost_usd from prompts."""

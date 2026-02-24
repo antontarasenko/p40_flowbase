@@ -9,18 +9,13 @@ import json
 import pathlib
 import time
 import uuid
+from collections.abc import Callable
 from datetime import (
     UTC,
     datetime,
 )
 from typing import (
     Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Type,
 )
 
 import pydantic as pyd
@@ -34,14 +29,14 @@ from p40_flowbase.llm.models import (
     LLMRequest,
 )
 from p40_flowbase.llm.providers import (
-    LLMModelVersion,
     LLMModels,
+    LLMModelVersion,
     LLMProviders,
 )
 from p40_flowbase.logging import logger
 
 
-def _ensure_additional_properties_false(schema: Dict[str, Any]) -> Dict[str, Any]:
+def _ensure_additional_properties_false(schema: dict[str, Any]) -> dict[str, Any]:
     """Recursively set additionalProperties to false on all object-type schemas.
 
     Required by providers like Anthropic and OpenAI (strict mode) for structured
@@ -99,16 +94,16 @@ class LLMRequestsDBMixin:
     default_rate_period: float = 1.0
 
     # API keys - should be set by project config
-    _anthropic_api_key: Optional[str] = None
-    _google_api_key: Optional[str] = None
-    _openai_api_key: Optional[str] = None
+    _anthropic_api_key: str | None = None
+    _google_api_key: str | None = None
+    _openai_api_key: str | None = None
 
     @classmethod
     def set_api_keys(
         cls,
-        anthropic_api_key: Optional[str] = None,
-        google_api_key: Optional[str] = None,
-        openai_api_key: Optional[str] = None,
+        anthropic_api_key: str | None = None,
+        google_api_key: str | None = None,
+        openai_api_key: str | None = None,
     ) -> None:
         """Set API keys for LLM providers.
 
@@ -135,9 +130,9 @@ class LLMRequestsDBMixin:
 
     async def execute(
         self,
-        group_id: Optional[uuid.UUID] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        group_id: uuid.UUID | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
     ):
         """Execute pending LLM requests.
 
@@ -157,9 +152,9 @@ class LLMRequestsDBMixin:
 
     async def retry(
         self,
-        group_id: Optional[uuid.UUID] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        group_id: uuid.UUID | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
     ):
         """Retry failed LLM requests.
 
@@ -177,7 +172,7 @@ class LLMRequestsDBMixin:
             llm_request_group_id=str(group_id) if group_id else None,
         )
 
-    def _model_to_json_schema(self, model_class: Type[pyd.BaseModel]) -> Dict[str, Any]:
+    def _model_to_json_schema(self, model_class: type[pyd.BaseModel]) -> dict[str, Any]:
         """Convert Pydantic or SQLModel model to JSON schema.
 
         Args:
@@ -215,12 +210,12 @@ class LLMRequestsDBMixin:
     def _build_anthropic_request(
         self,
         model: str,
-        system_prompt: Optional[str],
-        user_prompt: Optional[str],
-        temperature: Optional[float],
-        attachments_data: List[Dict[str, Any]],
-        response_schema: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        system_prompt: str | None,
+        user_prompt: str | None,
+        temperature: float | None,
+        attachments_data: list[dict[str, Any]],
+        response_schema: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Build request body for Anthropic API."""
         content = []
 
@@ -264,12 +259,12 @@ class LLMRequestsDBMixin:
     def _build_google_request(
         self,
         model: str,
-        system_prompt: Optional[str],
-        user_prompt: Optional[str],
-        temperature: Optional[float],
-        attachments_data: List[Dict[str, Any]],
-        response_schema: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        system_prompt: str | None,
+        user_prompt: str | None,
+        temperature: float | None,
+        attachments_data: list[dict[str, Any]],
+        response_schema: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Build request body for Google Gemini API."""
         parts = []
 
@@ -286,7 +281,7 @@ class LLMRequestsDBMixin:
         if user_prompt:
             parts.append({"text": user_prompt})
 
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "contents": [{"parts": parts if parts else [{"text": ""}]}],
         }
 
@@ -309,19 +304,19 @@ class LLMRequestsDBMixin:
     def _build_openai_request(
         self,
         model: str,
-        system_prompt: Optional[str],
-        user_prompt: Optional[str],
-        temperature: Optional[float],
-        attachments_data: List[Dict[str, Any]],
-        response_schema: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        system_prompt: str | None,
+        user_prompt: str | None,
+        temperature: float | None,
+        attachments_data: list[dict[str, Any]],
+        response_schema: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Build request body for OpenAI API."""
         messages = []
 
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
-        user_content: List[Dict[str, Any]] = []
+        user_content: list[dict[str, Any]] = []
 
         for attachment in attachments_data:
             user_content.append(
@@ -341,7 +336,7 @@ class LLMRequestsDBMixin:
         else:
             messages.append({"role": "user", "content": ""})
 
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
@@ -409,8 +404,8 @@ class LLMRequestsDBMixin:
 
     async def _add_llm_requests(
         self,
-        requests: List[Dict[str, Any]],
-    ) -> List[LLMRequest]:
+        requests: list[dict[str, Any]],
+    ) -> list[LLMRequest]:
         """Add LLM requests to the database for later execution.
 
         Args:
@@ -434,7 +429,7 @@ class LLMRequestsDBMixin:
                 attachments = request_data.get("attachments")
                 attachments_json = None
                 if attachments:
-                    normalized_attachments: List[str] = []
+                    normalized_attachments: list[str] = []
                     for file_id in attachments:
                         if isinstance(file_id, uuid.UUID):
                             normalized_attachments.append(file_id.hex)
@@ -535,7 +530,7 @@ class LLMRequestsDBMixin:
     async def _load_attachment_data(
         self,
         llm_request: LLMRequest,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Load and encode attachment files for an LLM request.
 
         Args:
@@ -602,9 +597,9 @@ class LLMRequestsDBMixin:
     def _prepare_llm_http_request(
         self,
         llm_request: LLMRequest,
-        attachments_data: List[Dict[str, str]],
-        ephemeral_headers: Optional[Dict[str, str]] = None,
-    ) -> Tuple[str, Dict[str, str], Dict[str, str], Dict[str, Any]]:
+        attachments_data: list[dict[str, str]],
+        ephemeral_headers: dict[str, str] | None = None,
+    ) -> tuple[str, dict[str, str], dict[str, str], dict[str, Any]]:
         """Prepare HTTP request for LLM API call.
 
         Args:
@@ -687,7 +682,7 @@ class LLMRequestsDBMixin:
         self,
         http_request: HTTPRequest,
         model: LLMModels,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Parse LLM response from HTTP request.
 
         Args:
@@ -725,7 +720,7 @@ class LLMRequestsDBMixin:
         self,
         http_client,
         llm_request: LLMRequest,
-        ephemeral_headers: Optional[Dict[str, str]] = None,
+        ephemeral_headers: dict[str, str] | None = None,
     ) -> LLMRequest:
         """Process a single LLM request.
 
@@ -812,9 +807,9 @@ class LLMRequestsDBMixin:
         self,
         rate_limit: float = 1.0,
         rate_period: float = 1.0,
-        llm_request_group_id: Optional[str] = None,
-        ephemeral_headers: Optional[Dict[str, str]] = None,
-    ) -> List[LLMRequest]:
+        llm_request_group_id: str | None = None,
+        ephemeral_headers: dict[str, str] | None = None,
+    ) -> list[LLMRequest]:
         """Execute all LLM requests where requested_at_utc is null.
 
         Args:
@@ -903,9 +898,9 @@ class LLMRequestsDBMixin:
         self,
         rate_limit: float = 1.0,
         rate_period: float = 1.0,
-        llm_request_group_id: Optional[str] = None,
-        ephemeral_headers: Optional[Dict[str, str]] = None,
-    ) -> List[LLMRequest]:
+        llm_request_group_id: str | None = None,
+        ephemeral_headers: dict[str, str] | None = None,
+    ) -> list[LLMRequest]:
         """Retry LLM requests that failed.
 
         Creates new LLMRequest entries for each failed request and executes them.
@@ -984,7 +979,7 @@ class LLMRequestsDBMixin:
     async def _get_llm_wave_results(
         self,
         group_id: uuid.UUID,
-    ) -> List[LLMRequest]:
+    ) -> list[LLMRequest]:
         """Get non-superseded LLM requests for a group.
 
         Args:
@@ -1005,15 +1000,15 @@ class LLMRequestsDBMixin:
 
     async def _execute_llm_request_graph(
         self,
-        lanes: List[str],
+        lanes: list[str],
         num_steps: int,
         populate_step: Callable,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
         max_retries: int = 1,
-        checkpointer: Optional[Any] = None,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, List[list]]:
+        checkpointer: Any | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, list[list]]:
         """Execute a parallel-lane, sequential-step graph for LLM requests.
 
         Args:
@@ -1081,15 +1076,15 @@ class LLMRequestsDBMixin:
 
     async def execute_graph(
         self,
-        lanes: List[str],
+        lanes: list[str],
         num_steps: int,
-        populate_step: Optional[Callable] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        populate_step: Callable | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
         max_retries: int = 1,
-        checkpointer: Optional[Any] = None,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, List[list]]:
+        checkpointer: Any | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, list[list]]:
         """Execute a parallel-lane, sequential-step graph for LLM requests.
 
         Convenience method that defaults populate_step to self._populate_lane_step.

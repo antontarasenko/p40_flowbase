@@ -10,16 +10,13 @@ import json
 import pathlib
 import time
 import uuid
+from collections.abc import Callable
 from datetime import (
     UTC,
     datetime,
 )
 from typing import (
     Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
 )
 
 from p40_flowbase.agents.models import (
@@ -29,7 +26,6 @@ from p40_flowbase.agents.models import (
     AgentToolCall,
 )
 from p40_flowbase.agents.providers import (
-    AgentModels,
     AgentProviders,
 )
 from p40_flowbase.logging import logger
@@ -54,14 +50,14 @@ class AgentTasksDBMixin:
     default_rate_period: float = 1.0
 
     # API keys - should be set by project config
-    _openai_api_key: Optional[str] = None
-    _anthropic_api_key: Optional[str] = None
+    _openai_api_key: str | None = None
+    _anthropic_api_key: str | None = None
 
     @classmethod
     def set_api_keys(
         cls,
-        openai_api_key: Optional[str] = None,
-        anthropic_api_key: Optional[str] = None,
+        openai_api_key: str | None = None,
+        anthropic_api_key: str | None = None,
     ) -> None:
         """Set API keys for agent providers.
 
@@ -86,10 +82,10 @@ class AgentTasksDBMixin:
 
     async def execute(
         self,
-        group_id: Optional[uuid.UUID] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
-    ) -> List[AgentTask]:
+        group_id: uuid.UUID | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
+    ) -> list[AgentTask]:
         """Execute pending agent tasks.
 
         Args:
@@ -108,10 +104,10 @@ class AgentTasksDBMixin:
 
     async def retry(
         self,
-        group_id: Optional[uuid.UUID] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
-    ) -> List[AgentTask]:
+        group_id: uuid.UUID | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
+    ) -> list[AgentTask]:
         """Retry failed agent tasks.
 
         Args:
@@ -130,8 +126,8 @@ class AgentTasksDBMixin:
 
     async def _add_agent_tasks(
         self,
-        tasks: List[Dict[str, Any]],
-    ) -> List[AgentTask]:
+        tasks: list[dict[str, Any]],
+    ) -> list[AgentTask]:
         """Add agent tasks to the database for later execution.
 
         Args:
@@ -164,7 +160,7 @@ class AgentTasksDBMixin:
                 attachments = task_data.get("attachments")
                 attachments_json = None
                 if attachments:
-                    normalized_attachments: List[str] = []
+                    normalized_attachments: list[str] = []
                     for file_id in attachments:
                         if isinstance(file_id, uuid.UUID):
                             normalized_attachments.append(file_id.hex)
@@ -274,8 +270,8 @@ class AgentTasksDBMixin:
     async def _store_tool_calls(
         self,
         agent_task_id: uuid.UUID,
-        tool_calls: List[Dict[str, Any]],
-    ) -> List[AgentToolCall]:
+        tool_calls: list[dict[str, Any]],
+    ) -> list[AgentToolCall]:
         """Store tool call records in database.
 
         Args:
@@ -315,8 +311,8 @@ class AgentTasksDBMixin:
     async def _store_messages(
         self,
         agent_task_id: uuid.UUID,
-        messages: List[Dict[str, Any]],
-    ) -> List[AgentMessage]:
+        messages: list[dict[str, Any]],
+    ) -> list[AgentMessage]:
         """Store conversation messages in database.
 
         Args:
@@ -579,8 +575,8 @@ class AgentTasksDBMixin:
         self,
         rate_limit: float = 1.0,
         rate_period: float = 1.0,
-        agent_task_group_id: Optional[uuid.UUID] = None,
-    ) -> List[AgentTask]:
+        agent_task_group_id: uuid.UUID | None = None,
+    ) -> list[AgentTask]:
         """Execute all agent tasks where started_at_utc is null.
 
         Args:
@@ -656,8 +652,8 @@ class AgentTasksDBMixin:
         self,
         rate_limit: float = 1.0,
         rate_period: float = 1.0,
-        agent_task_group_id: Optional[uuid.UUID] = None,
-    ) -> List[AgentTask]:
+        agent_task_group_id: uuid.UUID | None = None,
+    ) -> list[AgentTask]:
         """Retry agent tasks that failed.
 
         Creates new AgentTask entries for each failed task and executes them.
@@ -742,7 +738,7 @@ class AgentTasksDBMixin:
     async def _get_agent_wave_results(
         self,
         group_id: uuid.UUID,
-    ) -> List[AgentTask]:
+    ) -> list[AgentTask]:
         """Get non-superseded agent tasks for a group.
 
         Args:
@@ -763,15 +759,15 @@ class AgentTasksDBMixin:
 
     async def _execute_agent_task_graph(
         self,
-        lanes: List[str],
+        lanes: list[str],
         num_steps: int,
         populate_step: Callable,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
         max_retries: int = 1,
-        checkpointer: Optional[Any] = None,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, List[list]]:
+        checkpointer: Any | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, list[list]]:
         """Execute a parallel-lane, sequential-step graph for agent tasks.
 
         Args:
@@ -849,15 +845,15 @@ class AgentTasksDBMixin:
 
     async def execute_graph(
         self,
-        lanes: List[str],
+        lanes: list[str],
         num_steps: int,
-        populate_step: Optional[Callable] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        populate_step: Callable | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
         max_retries: int = 1,
-        checkpointer: Optional[Any] = None,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, List[list]]:
+        checkpointer: Any | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, list[list]]:
         """Execute a parallel-lane, sequential-step graph for agent tasks.
 
         Convenience method that defaults populate_step to self._populate_lane_step.

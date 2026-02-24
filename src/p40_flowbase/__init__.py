@@ -5,14 +5,28 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
+from importlib.metadata import version
+
+from p40_flowbase.agents import (
+    AgentFile,
+    AgentMessage,
+    AgentModels,
+    AgentModelVersion,
+    AgentProviders,
+    AgentTask,
+    AgentTaskExtra,
+    AgentTaskGroup,
+    AgentTasksDBMixin,
+    AgentToolCall,
+)
 from p40_flowbase.config import BaseFlowSettings
 from p40_flowbase.core import (
     CompositeDataObject,
     CompositeFormat,
-    DBDataObject,
-    DBFormat,
     DataObject,
     DataObjectVersion,
+    DBDataObject,
+    DBFormat,
     DocumentDataObject,
     DocumentFormat,
     FigureDataObject,
@@ -32,22 +46,10 @@ from p40_flowbase.http import (
     HTTPRequestGroup,
     HTTPRequestsDBMixin,
 )
-from p40_flowbase.agents import (
-    AgentFile,
-    AgentMessage,
-    AgentModelVersion,
-    AgentModels,
-    AgentProviders,
-    AgentTask,
-    AgentTaskExtra,
-    AgentTaskGroup,
-    AgentTasksDBMixin,
-    AgentToolCall,
-)
 from p40_flowbase.llm import (
     LLMFile,
-    LLMModelVersion,
     LLMModels,
+    LLMModelVersion,
     LLMProviders,
     LLMRequest,
     LLMRequestExtra,
@@ -67,11 +69,11 @@ from p40_flowbase.styles import (
     STYLES,
     apply_style,
 )
-from importlib.metadata import version
 
 __version__ = version("p40_flowbase")
 
 __all__ = [
+    "STYLES",
     "AgentFile",
     "AgentMessage",
     "AgentModelVersion",
@@ -108,7 +110,6 @@ __all__ = [
     "LLMRequestsDBMixin",
     "ModelDataObject",
     "ModelFormat",
-    "STYLES",
     "TableDataObject",
     "TableFormat",
     "__version__",

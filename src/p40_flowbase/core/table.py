@@ -4,10 +4,6 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
-from typing import (
-    Optional,
-    Type,
-)
 
 import pandas as pd
 import pydantic as pyd
@@ -33,11 +29,11 @@ class TableDataObject(DataObject):
     """
 
     make_format: TableFormat = TableFormat.PARQUET
-    schema: Type[pyd.BaseModel]
+    schema: type[pyd.BaseModel]
 
     def __init__(self, version):
         super().__init__(version)
-        self._df: Optional[pd.DataFrame] = None
+        self._df: pd.DataFrame | None = None
 
     @property
     def pdf(self) -> pd.DataFrame:

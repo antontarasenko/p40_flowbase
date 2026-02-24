@@ -9,13 +9,10 @@ from abc import (
     abstractmethod,
 )
 from typing import (
-    Dict,
-    Optional,
-    Type,
+    Annotated,
 )
 
 import typer
-from typing_extensions import Annotated
 
 from p40_flowbase.agents.mixin import AgentTasksDBMixin
 from p40_flowbase.core.base import DataObject
@@ -51,7 +48,7 @@ class BaseDataObjectManager(ABC):
             manager.run()
     """
 
-    OBJECTS: Dict[str, Type[DataObject]] = {}
+    OBJECTS: dict[str, type[DataObject]] = {}
     app_name: str = "data_manager"
     app_help: str = "Manage data objects"
 
@@ -62,17 +59,17 @@ class BaseDataObjectManager(ABC):
         ...
 
     @property
-    def anthropic_api_key(self) -> Optional[str]:
+    def anthropic_api_key(self) -> str | None:
         """Return Anthropic API key. Override in subclass to provide key."""
         return None
 
     @property
-    def google_api_key(self) -> Optional[str]:
+    def google_api_key(self) -> str | None:
         """Return Google API key. Override in subclass to provide key."""
         return None
 
     @property
-    def openai_api_key(self) -> Optional[str]:
+    def openai_api_key(self) -> str | None:
         """Return OpenAI API key. Override in subclass to provide key."""
         return None
 

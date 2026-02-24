@@ -8,16 +8,13 @@ import asyncio
 import json
 import time
 import uuid
+from collections.abc import Callable
 from datetime import (
     UTC,
     datetime,
 )
 from typing import (
     Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
 )
 
 from p40_flowbase.http.models import HTTPRequest
@@ -53,9 +50,9 @@ class HTTPRequestsDBMixin:
 
     async def execute(
         self,
-        group_id: Optional[uuid.UUID] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        group_id: uuid.UUID | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
     ):
         """Execute pending HTTP requests.
 
@@ -75,9 +72,9 @@ class HTTPRequestsDBMixin:
 
     async def retry(
         self,
-        group_id: Optional[uuid.UUID] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        group_id: uuid.UUID | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
     ):
         """Retry failed HTTP requests.
 
@@ -97,8 +94,8 @@ class HTTPRequestsDBMixin:
 
     async def _add_http_requests(
         self,
-        requests: List[Dict[str, Any]],
-    ) -> List[HTTPRequest]:
+        requests: list[dict[str, Any]],
+    ) -> list[HTTPRequest]:
         """Add HTTP requests to the database for later execution.
 
         Args:
@@ -140,10 +137,10 @@ class HTTPRequestsDBMixin:
         http_client,
         request_method: str,
         request_url: str,
-        request_headers: Optional[str],
-        request_body: Optional[str],
-        ephemeral_headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
+        request_headers: str | None,
+        request_body: str | None,
+        ephemeral_headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         """Execute a single HTTP request and return response data.
 
         Args:
@@ -195,8 +192,8 @@ class HTTPRequestsDBMixin:
         self,
         rate_limit: float = 5.0,
         rate_period: float = 1.0,
-        ephemeral_headers: Optional[Dict[str, str]] = None,
-        http_request_group_id: Optional[str] = None,
+        ephemeral_headers: dict[str, str] | None = None,
+        http_request_group_id: str | None = None,
     ):
         """Execute all requests where requested_at_utc is null.
 
@@ -288,7 +285,7 @@ class HTTPRequestsDBMixin:
         self,
         http_client,
         row: HTTPRequest,
-        ephemeral_headers: Optional[Dict[str, str]] = None,
+        ephemeral_headers: dict[str, str] | None = None,
     ) -> HTTPRequest:
         """Process a single HTTP request.
 
@@ -330,7 +327,7 @@ class HTTPRequestsDBMixin:
         self,
         http_client,
         row: HTTPRequest,
-        ephemeral_headers: Optional[Dict[str, str]] = None,
+        ephemeral_headers: dict[str, str] | None = None,
     ) -> HTTPRequest:
         """Retry a single failed HTTP request and create a new log entry.
 
@@ -373,8 +370,8 @@ class HTTPRequestsDBMixin:
         self,
         rate_limit: float = 5.0,
         rate_period: float = 1.0,
-        ephemeral_headers: Optional[Dict[str, str]] = None,
-        http_request_group_id: Optional[str] = None,
+        ephemeral_headers: dict[str, str] | None = None,
+        http_request_group_id: str | None = None,
     ):
         """Retry all requests that did not return status 200.
 
@@ -440,7 +437,7 @@ class HTTPRequestsDBMixin:
     async def _get_http_wave_results(
         self,
         group_id: uuid.UUID,
-    ) -> List[HTTPRequest]:
+    ) -> list[HTTPRequest]:
         """Get non-superseded HTTP requests for a group.
 
         Args:
@@ -461,15 +458,15 @@ class HTTPRequestsDBMixin:
 
     async def _execute_http_request_graph(
         self,
-        lanes: List[str],
+        lanes: list[str],
         num_steps: int,
         populate_step: Callable,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
         max_retries: int = 1,
-        checkpointer: Optional[Any] = None,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, List[list]]:
+        checkpointer: Any | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, list[list]]:
         """Execute a parallel-lane, sequential-step graph for HTTP requests.
 
         Args:
@@ -537,15 +534,15 @@ class HTTPRequestsDBMixin:
 
     async def execute_graph(
         self,
-        lanes: List[str],
+        lanes: list[str],
         num_steps: int,
-        populate_step: Optional[Callable] = None,
-        rate_limit: Optional[float] = None,
-        rate_period: Optional[float] = None,
+        populate_step: Callable | None = None,
+        rate_limit: float | None = None,
+        rate_period: float | None = None,
         max_retries: int = 1,
-        checkpointer: Optional[Any] = None,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, List[list]]:
+        checkpointer: Any | None = None,
+        thread_id: str | None = None,
+    ) -> dict[str, list[list]]:
         """Execute a parallel-lane, sequential-step graph for HTTP requests.
 
         Convenience method that defaults populate_step to self._populate_lane_step.

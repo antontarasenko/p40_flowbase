@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import tempfile
 from abc import abstractmethod
-from typing import Dict
 
 from jinja2 import (
     Environment,
@@ -43,7 +42,7 @@ class DocumentDataObject(DataObject):
     make_format: DocumentFormat = DocumentFormat.MD
     template: str
     template_package: str = "p40_flowbase.templates"
-    data: Dict
+    data: dict
 
     def __init__(self, version):
         super().__init__(version)

@@ -5,10 +5,9 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import asyncio
-from typing import Type
+from typing import Annotated
 
 import typer
-from typing_extensions import Annotated
 
 from p40_flowbase.logging import logger
 from p40_flowbase.manager.utils import (
@@ -18,7 +17,7 @@ from p40_flowbase.manager.utils import (
 
 
 def create_object_app(
-    obj_class: Type,
+    obj_class: type,
     data_local_tmp: str,
 ) -> typer.Typer:
     """Create a Typer app for an object class with standard commands.

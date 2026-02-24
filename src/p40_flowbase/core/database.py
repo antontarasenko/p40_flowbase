@@ -7,7 +7,6 @@ Copyright (c) 2025 Anton Tarasenko
 import asyncio
 from typing import (
     Any,
-    List,
 )
 
 from p40_flowbase.core.base import DataObject
@@ -30,7 +29,7 @@ class DBDataObject(DataObject):
     """
 
     make_format: DBFormat = DBFormat.SQLITE
-    schema: List[Any] = []
+    schema: list[Any] = []
 
     def __init__(self, version):
         super().__init__(version)

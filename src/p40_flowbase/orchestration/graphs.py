@@ -11,13 +11,10 @@ each lane subgraph loops through its steps sequentially.
 """
 
 import operator
+from collections.abc import Callable
 from typing import (
     Annotated,
     Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
     TypedDict,
 )
 
@@ -80,7 +77,7 @@ class OverallState(TypedDict, total=False):
         organized_results: Final organized results (set by collect_results node).
     """
 
-    lanes: List[str]
+    lanes: list[str]
     num_steps: int
     max_retries: int
     lane_results: Annotated[list, operator.add]
@@ -92,7 +89,7 @@ def build_recursive_task_graph(
     execute_pending: Callable,
     retry_failed: Callable,
     get_wave_results: Callable,
-    checkpointer: Optional[Any] = None,
+    checkpointer: Any | None = None,
 ):
     """Build a LangGraph graph for parallel-lane, sequential-step execution.
 
@@ -210,7 +207,7 @@ def build_recursive_task_graph(
 
     def collect_results(state: dict) -> dict:
         """Reorganize flat lane_results into per-lane dict."""
-        organized: Dict[str, List[list]] = {}
+        organized: dict[str, list[list]] = {}
         for entry in state.get("lane_results", []):
             lane_id = entry["lane_id"]
             step_index = entry["step_index"]
