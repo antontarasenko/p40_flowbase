@@ -3,6 +3,7 @@
 ## Branch `main`
 
 - Fix parallel lane processing
+- devel: Set strict code quality checks
 
 ## 0.2.2 (2026-02-21)
 

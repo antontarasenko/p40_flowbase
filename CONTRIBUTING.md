@@ -13,6 +13,19 @@ direnv allow
 make help
 ```
 
+## Commits
+
+Pre-commit routine:
+
+```
+black src/ tests/
+ruff check src/ tests/
+mypy src/
+pytest
+pytest --cov
+coverage report
+```
+
 ## Releases
 
 1. Update the code
