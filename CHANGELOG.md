@@ -5,6 +5,7 @@
 - Fix parallel lane processing
 - devel: Set strict code quality checks
 - devel: Sort imports, replace `Optional[*] = None` patterns
+- devel: Add `.git-blame-ignore-revs`
 
 ## 0.2.2 (2026-02-21)
 
