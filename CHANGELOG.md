@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Fix parallel lane processing
+
 ## 0.2.2 (2026-02-21)
 
 - Fix `process_step` in graph operations

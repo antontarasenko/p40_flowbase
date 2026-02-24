@@ -10,12 +10,15 @@ run in parallel. LangGraph's Send API fans out one subgraph per lane, and
 each lane subgraph loops through its steps sequentially.
 """
 
+import operator
 from typing import (
+    Annotated,
     Any,
     Callable,
     Dict,
     List,
     Optional,
+    TypedDict,
 )
 
 from langgraph.constants import (
@@ -65,7 +68,7 @@ class LaneState(dict):
         return self.get("all_step_results", [])
 
 
-class OverallState(dict):
+class OverallState(TypedDict, total=False):
     """State for the main fan-out/collect graph.
 
     Attributes:
@@ -73,23 +76,15 @@ class OverallState(dict):
         num_steps: Number of steps per lane.
         max_retries: Maximum retry attempts per step.
         lane_results: Flat list of per-lane result dicts, collected from all lanes.
+            Uses operator.add reducer so concurrent Send outputs are concatenated.
+        organized_results: Final organized results (set by collect_results node).
     """
 
-    @property
-    def lanes(self) -> List[str]:
-        return self["lanes"]
-
-    @property
-    def num_steps(self) -> int:
-        return self["num_steps"]
-
-    @property
-    def max_retries(self) -> int:
-        return self["max_retries"]
-
-    @property
-    def lane_results(self) -> list:
-        return self.get("lane_results", [])
+    lanes: List[str]
+    num_steps: int
+    max_retries: int
+    lane_results: Annotated[list, operator.add]
+    organized_results: dict
 
 
 def build_recursive_task_graph(
@@ -234,7 +229,7 @@ def build_recursive_task_graph(
         result = await compiled_lane.ainvoke(state)
         return {"lane_results": result.get("all_step_results", [])}
 
-    main_graph = StateGraph(dict)
+    main_graph = StateGraph(OverallState)
     main_graph.add_node("lane_processor", lane_processor)
     main_graph.add_node("collect_results", collect_results)
     main_graph.add_conditional_edges(START, fan_out_lanes)
