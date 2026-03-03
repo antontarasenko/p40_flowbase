@@ -822,10 +822,11 @@ class LLMRequestsDBMixin:
             List of executed LLMRequest entries with responses populated.
         """
         import aiohttp
-        from aiolimiter import AsyncLimiter
         from sqlmodel import select
 
-        limiter = AsyncLimiter(max_rate=rate_limit, time_period=rate_period)
+        from p40_flowbase.helpers.rate_limit import create_limiter
+
+        limiter = create_limiter(rate_limit, rate_period)
 
         async with self.session_factory() as session:
             statement = select(LLMRequest).where(LLMRequest.requested_at_utc.is_(None))

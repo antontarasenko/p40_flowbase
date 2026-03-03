@@ -3,6 +3,7 @@
 ## Branch `main`
 
 - Fix parallel lane processing
+- Fix error when `max_rate` in `aiolimiter` is less than 1
 - devel: Set strict code quality checks
 - devel: Sort imports, replace `Optional[*] = None` patterns
 - devel: Add `.git-blame-ignore-revs`

@@ -587,10 +587,11 @@ class AgentTasksDBMixin:
         Returns:
             List of executed AgentTask entries with results populated.
         """
-        from aiolimiter import AsyncLimiter
         from sqlmodel import select
 
-        limiter = AsyncLimiter(max_rate=rate_limit, time_period=rate_period)
+        from p40_flowbase.helpers.rate_limit import create_limiter
+
+        limiter = create_limiter(rate_limit, rate_period)
 
         async with self.session_factory() as session:
             statement = select(AgentTask).where(AgentTask.started_at_utc.is_(None))
