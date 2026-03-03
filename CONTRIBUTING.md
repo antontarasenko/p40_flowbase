@@ -2,7 +2,9 @@
 
 ## Prerequisites
 
-- `nix` with `nix-command` and `flakes` enabled and the `nix-direnv` package installed
+- Install `nix` (multi-user installation recommended)
+- Enable `nix-command` and `flakes`
+- Install `nix-direnv` package
 
 ## Setup
 
@@ -11,6 +13,21 @@ Enable dev shell via `direnv` and check for available options:
 ```sh
 direnv allow
 make help
+```
+
+## Environment
+
+When you add a dependency to `pyproject.toml`, update the local dev environment:
+
+```sh
+uv lock
+direnv reload
+```
+
+When you update dependencies in `flake.nix`, update `flake.lock`:
+
+```sh
+nix flake update
 ```
 
 ## Commits
