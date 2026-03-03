@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.2.3 (2026-03-03)
+
 - Fix parallel lane processing
 - Fix error when `max_rate` in `aiolimiter` is less than 1
 - devel: Set strict code quality checks
