@@ -2,6 +2,9 @@
 
 ## Branch `main`
 
+- Upgrade `claude-agent-sdk` from 0.1.39 to 0.1.48
+- Fix `rate_limit_event` error
+
 ## 0.2.3 (2026-03-03)
 
 - Fix parallel lane processing
