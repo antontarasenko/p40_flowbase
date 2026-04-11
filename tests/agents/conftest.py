@@ -29,7 +29,7 @@ class TestAgentDB(AgentTasksDBMixin, DBDataObject):
 
 
 @pytest.fixture
-async def agent_db(test_data_local_tmp):
+async def agent_db(test_local_data):
     db = TestAgentDB(TestVersion.V1)
     await db.make_async(replace=True)
     yield db

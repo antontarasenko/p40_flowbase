@@ -34,7 +34,7 @@ class TestLLMDB(LLMRequestsDBMixin, HTTPRequestsDBMixin, DBDataObject):
 
 
 @pytest.fixture
-async def llm_db(test_data_local_tmp):
+async def llm_db(test_local_data):
     db = TestLLMDB(TestVersion.V1)
     await db.make_async(replace=True)
     yield db

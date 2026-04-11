@@ -12,40 +12,40 @@ import typer
 def check_object_exists(
     object_id: str,
     version: str,
-    data_local_tmp: str,
+    local_data: str,
 ) -> bool:
     """Check if a data object version exists on disk.
 
     Args:
         object_id: The data object identifier.
         version: The version identifier.
-        data_local_tmp: Base path for data storage.
+        local_data: Base path for data storage.
 
     Returns:
         True if the object directory exists, False otherwise.
     """
     object_stem = f"{object_id}-{version}"
-    object_dir = pathlib.Path(data_local_tmp) / object_stem
+    object_dir = pathlib.Path(local_data) / object_stem
     return object_dir.exists()
 
 
 def get_existing_formats(
     object_id: str,
     version: str,
-    data_local_tmp: str,
+    local_data: str,
 ) -> list[str]:
     """Get list of existing format extensions for a data object version.
 
     Args:
         object_id: The data object identifier.
         version: The version identifier.
-        data_local_tmp: Base path for data storage.
+        local_data: Base path for data storage.
 
     Returns:
         Sorted list of file extensions (without dots) found in the object directory.
     """
     object_stem = f"{object_id}-{version}"
-    object_dir = pathlib.Path(data_local_tmp) / object_stem
+    object_dir = pathlib.Path(local_data) / object_stem
     if not object_dir.exists():
         return []
 
@@ -88,13 +88,13 @@ def get_version_enum(object_class: type, version_id: str):
 
 def format_versions_help(
     obj_class: type,
-    data_local_tmp: str,
+    local_data: str,
 ) -> str:
     """Generate versions help text for an object class.
 
     Args:
         obj_class: The data object class.
-        data_local_tmp: Base path for data storage.
+        local_data: Base path for data storage.
 
     Returns:
         Formatted help text showing supported versions with markers and formats.
@@ -108,7 +108,7 @@ def format_versions_help(
         exists = check_object_exists(
             object_id=obj_class.id,
             version=version_id,
-            data_local_tmp=data_local_tmp,
+            local_data=local_data,
         )
         marker = "✓" if exists else "○"
 
@@ -116,7 +116,7 @@ def format_versions_help(
             formats = get_existing_formats(
                 object_id=obj_class.id,
                 version=version_id,
-                data_local_tmp=data_local_tmp,
+                local_data=local_data,
             )
         else:
             formats = []

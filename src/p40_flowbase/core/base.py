@@ -80,7 +80,7 @@ class DataObject(ABC):
     supported_versions: tuple = ()
 
     # Must be set by project config
-    _data_local_tmp: str | None = None
+    _local_data: str | None = None
 
     def __init__(self, version: Enum):
         """Initialize a data object with a specific version.
@@ -99,7 +99,7 @@ class DataObject(ABC):
         self.version = version
 
     @classmethod
-    def set_data_local_tmp(cls, path: str) -> None:
+    def set_local_data(cls, path: str) -> None:
         """Set the base directory for data storage.
 
         This must be called before using any DataObject subclass.
@@ -107,21 +107,21 @@ class DataObject(ABC):
         Args:
             path: Path to the directory where data objects will be stored.
         """
-        cls._data_local_tmp = path
+        cls._local_data = path
 
     @property
-    def data_local_tmp(self) -> str:
+    def local_data(self) -> str:
         """Return the base directory for data storage.
 
         Raises:
-            RuntimeError: If data_local_tmp has not been set.
+            RuntimeError: If local_data has not been set.
         """
-        if self._data_local_tmp is None:
+        if self._local_data is None:
             raise RuntimeError(
-                "data_local_tmp has not been set. "
-                "Call DataObject.set_data_local_tmp(path) or set it via config."
+                "local_data has not been set. "
+                "Call DataObject.set_local_data(path) or set it via config."
             )
-        return self._data_local_tmp
+        return self._local_data
 
     @property
     def object_stem(self) -> str:
@@ -131,7 +131,7 @@ class DataObject(ABC):
     @property
     def local_dir(self) -> pathlib.Path:
         """Return the local directory path."""
-        return pathlib.Path(self.data_local_tmp) / self.object_stem
+        return pathlib.Path(self.local_data) / self.object_stem
 
     def path_to_format(self, fmt: StrEnum) -> pathlib.Path:
         """Return path for a given format.

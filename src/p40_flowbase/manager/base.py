@@ -31,7 +31,7 @@ class BaseDataObjectManager(ABC):
     - OBJECTS: Dict mapping object IDs to DataObject classes
     - app_name: Name for the CLI application
     - app_help: Help text for the CLI application
-    - data_local_tmp: Path to the data storage directory
+    - local_data: Path to the data storage directory
 
     Example:
         class MyManager(BaseDataObjectManager):
@@ -41,7 +41,7 @@ class BaseDataObjectManager(ABC):
             }
             app_name = "my_manager"
             app_help = "Manage my data objects"
-            data_local_tmp = "/path/to/data"
+            local_data = "/path/to/data"
 
         if __name__ == "__main__":
             manager = MyManager()
@@ -54,7 +54,7 @@ class BaseDataObjectManager(ABC):
 
     @property
     @abstractmethod
-    def data_local_tmp(self) -> str:
+    def local_data(self) -> str:
         """Return the path to the data storage directory."""
         ...
 
@@ -75,7 +75,7 @@ class BaseDataObjectManager(ABC):
 
     def __init__(self):
         """Initialize the manager with a Typer app."""
-        DataObject.set_data_local_tmp(self.data_local_tmp)
+        DataObject.set_local_data(self.local_data)
         LLMRequestsDBMixin.set_api_keys(
             anthropic_api_key=self.anthropic_api_key,
             google_api_key=self.google_api_key,
@@ -126,7 +126,7 @@ class BaseDataObjectManager(ABC):
                 exists = check_object_exists(
                     object_id=object_id,
                     version=version_id,
-                    data_local_tmp=self.data_local_tmp,
+                    local_data=self.local_data,
                 )
                 marker = "✓" if exists else "○"
 
@@ -134,7 +134,7 @@ class BaseDataObjectManager(ABC):
                     formats = get_existing_formats(
                         object_id=object_id,
                         version=version_id,
-                        data_local_tmp=self.data_local_tmp,
+                        local_data=self.local_data,
                     )
                 else:
                     formats = []
@@ -154,7 +154,7 @@ class BaseDataObjectManager(ABC):
         for object_id, object_class in self.OBJECTS.items():
             object_app = create_object_app(
                 obj_class=object_class,
-                data_local_tmp=self.data_local_tmp,
+                local_data=self.local_data,
             )
             self.app.add_typer(object_app, name=object_id)
 

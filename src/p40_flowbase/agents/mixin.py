@@ -241,7 +241,7 @@ class AgentTasksDBMixin:
             md5sum = hashlib.md5(file_data).hexdigest()
 
         object_stem = f"{data_object_id}-{data_object_version}"
-        local_dir = pathlib.Path(self.data_local_tmp) / object_stem
+        local_dir = pathlib.Path(self.local_data) / object_stem
         format_path = local_dir / f"{object_stem}.{data_object_format}"
 
         if file_path == format_path:

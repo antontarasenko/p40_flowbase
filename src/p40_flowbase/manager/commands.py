@@ -18,7 +18,7 @@ from p40_flowbase.manager.utils import (
 
 def create_object_app(
     obj_class: type,
-    data_local_tmp: str,
+    local_data: str,
 ) -> typer.Typer:
     """Create a Typer app for an object class with standard commands.
 
@@ -31,14 +31,14 @@ def create_object_app(
 
     Args:
         obj_class: The data object class.
-        data_local_tmp: Base path for data storage.
+        local_data: Base path for data storage.
 
     Returns:
         Typer app with appropriate commands.
     """
     epilog = format_versions_help(
         obj_class=obj_class,
-        data_local_tmp=data_local_tmp,
+        local_data=local_data,
     )
 
     object_app = typer.Typer(

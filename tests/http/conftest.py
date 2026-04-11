@@ -29,7 +29,7 @@ class TestHTTPDB(HTTPRequestsDBMixin, DBDataObject):
 
 
 @pytest.fixture
-async def http_db(test_data_local_tmp):
+async def http_db(test_local_data):
     db = TestHTTPDB(TestVersion.V1)
     await db.make_async(replace=True)
     yield db

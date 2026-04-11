@@ -32,7 +32,7 @@ class BaseFlowSettings(pydantic_settings.BaseSettings):
     )
 
     style: str = "style_1"
-    data_local_tmp: str
+    local_data: str
 
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
