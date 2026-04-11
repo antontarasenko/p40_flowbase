@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.3.0 (2026-04-11)
+
 - Upgrade `claude-agent-sdk` from 0.1.39 to 0.1.48
 - Fix `rate_limit_event` error
 - Rename `data_local_tmp` to `local_data`
