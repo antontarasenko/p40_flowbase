@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Pin `claude-agent-sdk` version (0.1.* versioning is too broad)
+
 ## 0.3.0 (2026-04-11)
 
 - Upgrade `claude-agent-sdk` from 0.1.39 to 0.1.48
