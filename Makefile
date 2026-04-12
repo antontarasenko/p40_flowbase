@@ -1,96 +1,49 @@
-S3_BUCKET := s3://antontarasenko
-S3_BUCKET_URL := https://antontarasenko.s3.amazonaws.com
-S3_PYTHON_PREFIX := registry/p40_flowbase/Id0E3qM8Nx/python
-S3_FLAKE_PREFIX := registry/p40_flowbase/Id0E3qM8Nx/nix-flakes
 VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
-SYSTEM := $(shell nix eval --impure --raw --expr 'builtins.currentSystem')
 
 WHEEL_NAME := p40_flowbase-$(VERSION)-py3-none-any.whl
 WHEEL_PATH := dist/$(WHEEL_NAME)
-FLAKE_TARBALL := p40_flowbase-$(VERSION).tar.gz
-NIX_RESULT := ./result
 
-.PHONY: all clean build-python build-nix build-flake-tarball upload-python upload-flake upload info help
+.PHONY: all clean build upload info help
 
 help:
 	@echo "p40_flowbase distribution targets:"
 	@echo ""
-	@echo "  make build-python       Build Python wheel"
-	@echo "  make build-nix          Build Nix package (local test)"
-	@echo "  make build-flake-tarball Build flake source tarball"
-	@echo "  make build              Build Python wheel and flake tarball"
-	@echo ""
-	@echo "  make upload-python      Upload Python wheel to S3"
-	@echo "  make upload-flake       Upload flake tarball to S3"
-	@echo "  make upload             Upload all artifacts"
+	@echo "  make build              Build Python wheel"
+	@echo "  make upload             Upload Python wheel to PyPI"
 	@echo ""
 	@echo "  make info               Show current version and paths"
 	@echo "  make clean              Remove build artifacts"
 	@echo ""
 	@echo "Current version: $(VERSION)"
-	@echo "Current system:  $(SYSTEM)"
 
 all: build upload
 
 info:
 	@echo "Version:          $(VERSION)"
-	@echo "System:           $(SYSTEM)"
 	@echo "Wheel:            $(WHEEL_NAME)"
-	@echo "Flake tarball:    $(FLAKE_TARBALL)"
-	@echo "S3 bucket:        $(S3_BUCKET)"
-	@echo ""
-	@echo "Distribution URLs:"
-	@echo "  Python wheel: $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)"
-	@echo "  Nix flake:    $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)"
-	@echo ""
-	@if [ -L $(NIX_RESULT) ]; then \
-		echo "Nix store path: $$(readlink $(NIX_RESULT))"; \
-	fi
+	@echo "PyPI URL:         https://pypi.org/project/p40-flowbase/$(VERSION)/"
 
-build: build-python build-flake-tarball
-
-build-python:
+build:
 	@echo "Building Python wheel..."
 	python -m build --wheel
 	@echo "Built: $(WHEEL_PATH)"
 
-build-nix:
-	@echo "Building Nix package (local test)..."
-	nix build
-	@echo "Built: $$(readlink $(NIX_RESULT))"
-
-build-flake-tarball:
-	@echo "Building flake tarball..."
-	git archive --format=tar.gz --prefix=p40_flowbase/ HEAD > $(FLAKE_TARBALL)
-	@echo "Built: $(FLAKE_TARBALL)"
-
-upload: upload-python upload-flake
-
-upload-python: $(WHEEL_PATH)
-	@echo "Uploading Python wheel to S3..."
-	aws s3 cp $(WHEEL_PATH) $(S3_BUCKET)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)
-	@echo "Uploaded to: $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME)"
-
-upload-flake: $(FLAKE_TARBALL)
-	@echo "Uploading flake tarball to S3..."
-	aws s3 cp $(FLAKE_TARBALL) $(S3_BUCKET)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)
-	@echo "Uploaded to: $(S3_BUCKET_URL)/$(S3_FLAKE_PREFIX)/$(FLAKE_TARBALL)"
+upload: $(WHEEL_PATH)
+	@if ! echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
+		echo "ERROR: version '$(VERSION)' is not a clean release tag (expected X.Y.Z)"; \
+		exit 1; \
+	fi
+	@echo "Checking Python wheel..."
+	python -m twine check $(WHEEL_PATH)
+	@echo "Uploading Python wheel to PyPI..."
+	python -m twine upload $(WHEEL_PATH)
+	@echo "Uploaded to: https://pypi.org/project/p40-flowbase/$(VERSION)/"
 
 # Ensure wheel exists before upload
 $(WHEEL_PATH):
-	$(MAKE) build-python
-
-# Ensure flake tarball exists before upload
-$(FLAKE_TARBALL):
-	$(MAKE) build-flake-tarball
+	$(MAKE) build
 
 clean:
 	rm -rf dist/ build/ *.egg-info/
-	rm -f result $(FLAKE_TARBALL)
 	@echo "Cleaned build artifacts"
 
-# Print sha256 for Python wheel (for step1/pyproject.toml)
-print-wheel-sha256:
-	@echo "Wheel SHA256 (for pip):"
-	@nix-prefetch-url --type sha256 $(S3_BUCKET_URL)/$(S3_PYTHON_PREFIX)/$(WHEEL_NAME) 2>/dev/null || \
-		echo "Wheel not yet uploaded. Run 'make upload-python' first."

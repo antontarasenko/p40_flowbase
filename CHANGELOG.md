@@ -3,6 +3,7 @@
 ## Branch `main`
 
 - Pin `claude-agent-sdk` version (0.1.* versioning is too broad)
+- devel: Publish package on PyPI (starting from 0.3.0)
 
 ## 0.3.0 (2026-04-11)
 
