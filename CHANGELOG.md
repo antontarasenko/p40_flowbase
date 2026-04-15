@@ -4,6 +4,7 @@
 
 - Pin `claude-agent-sdk` version (0.1.* versioning is too broad)
 - devel: Publish package on PyPI (starting from 0.3.0)
+- Fix `get_existing_formats` missing folders in `CompositeFormat`
 
 ## 0.3.0 (2026-04-11)
 

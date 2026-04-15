@@ -52,7 +52,7 @@ def get_existing_formats(
     formats = []
     prefix = f"{object_stem}."
     for file in object_dir.iterdir():
-        if file.is_file():
+        if file.is_file() or file.is_dir():
             if file.name.startswith(prefix):
                 ext = file.name[len(prefix):]
             else:
