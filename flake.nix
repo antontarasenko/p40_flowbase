@@ -49,10 +49,10 @@
     };
 
     # setuptools-scm can't resolve git tags inside the Nix sandbox,
-    # so we set the version explicitly for the package build.
+    # so we read the version from the VERSION file.
     scmVersionOverlay = final: prev: {
       p40-flowbase = prev.p40-flowbase.overrideAttrs (old: {
-        version = "0.3.0";
+        version = lib.removeSuffix "\n" (builtins.readFile ./VERSION);
         __intentionallyOverridingVersion = true;
       });
     };

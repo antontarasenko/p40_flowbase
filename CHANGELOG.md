@@ -6,6 +6,7 @@
 - devel: Publish package on PyPI (starting from 0.3.0)
 - Fix `get_existing_formats` missing folders in `CompositeFormat`
 - Upgrade dependencies `claude-agent-sdk`, `openai-agents`, `langgraph`
+- devel: Specify package version for Nix in `VERSION` file
 
 ## 0.3.0 (2026-04-11)
 
