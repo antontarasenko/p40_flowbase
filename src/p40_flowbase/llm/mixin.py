@@ -215,6 +215,7 @@ class LLMRequestsDBMixin:
         temperature: float | None,
         attachments_data: list[dict[str, Any]],
         response_schema: dict[str, Any] | None = None,
+        effort: str | None = None,
     ) -> dict[str, Any]:
         """Build request body for Anthropic API."""
         content = []
@@ -253,6 +254,9 @@ class LLMRequestsDBMixin:
                 "type": "json_schema",
                 "schema": response_schema,
             }
+
+        if effort is not None:
+            body["output_config"] = {"effort": effort}
 
         return body
 
@@ -309,6 +313,7 @@ class LLMRequestsDBMixin:
         temperature: float | None,
         attachments_data: list[dict[str, Any]],
         response_schema: dict[str, Any] | None = None,
+        effort: str | None = None,
     ) -> dict[str, Any]:
         """Build request body for OpenAI API."""
         messages = []
@@ -354,6 +359,9 @@ class LLMRequestsDBMixin:
                     "schema": response_schema,
                 },
             }
+
+        if effort is not None:
+            body["reasoning_effort"] = effort
 
         return body
 
@@ -414,6 +422,7 @@ class LLMRequestsDBMixin:
                 - system_prompt (Optional[str]): System prompt
                 - user_prompt (Optional[str]): User prompt
                 - temperature (Optional[float]): Temperature setting
+                - effort (Optional[str]): Reasoning effort level
                 - attachments (Optional[List[str]]): List of llm_file_ids
                 - response_schema (Optional[Type[pyd.BaseModel] | dict]): Schema
                 - llm_request_group_id (Optional[uuid.UUID]): Reference to group
@@ -459,6 +468,7 @@ class LLMRequestsDBMixin:
                     system_prompt=request_data.get("system_prompt"),
                     user_prompt=request_data.get("user_prompt"),
                     temperature=request_data.get("temperature"),
+                    effort=request_data.get("effort"),
                     attachments=attachments_json,
                     response_schema=response_schema_json,
                     llm_request_group_id=request_data.get("llm_request_group_id"),
@@ -626,6 +636,7 @@ class LLMRequestsDBMixin:
                 temperature=llm_request.temperature,
                 attachments_data=attachments_data,
                 response_schema=response_schema,
+                effort=llm_request.effort,
             )
             stored_headers = {
                 "Content-Type": "application/json",
@@ -665,6 +676,7 @@ class LLMRequestsDBMixin:
                 temperature=llm_request.temperature,
                 attachments_data=attachments_data,
                 response_schema=response_schema,
+                effort=llm_request.effort,
             )
             stored_headers = {"Content-Type": "application/json"}
             api_key_headers = {}

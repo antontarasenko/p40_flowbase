@@ -135,6 +135,7 @@ class AgentTasksDBMixin:
                 - model (AgentModels): Agent model enum
                 - task_prompt (str): The task to perform
                 - system_prompt (Optional[str]): System prompt
+                - effort (Optional[str]): Reasoning effort level
                 - allowed_tools (Optional[List[str]]): List of tool names
                 - max_turns (Optional[int]): Maximum conversation turns
                 - working_directory (Optional[str]): Working directory for tools
@@ -196,6 +197,7 @@ class AgentTasksDBMixin:
                     model=task_data["model"],
                     task_prompt=task_data["task_prompt"],
                     system_prompt=task_data.get("system_prompt"),
+                    effort=task_data.get("effort"),
                     allowed_tools=allowed_tools_json,
                     max_turns=task_data.get("max_turns"),
                     working_directory=task_data.get("working_directory"),
@@ -388,10 +390,19 @@ class AgentTasksDBMixin:
             await session.commit()
 
         try:
+            model_settings = None
+            if task.effort is not None:
+                from openai.types.shared import Reasoning
+
+                model_settings = openai_agents.ModelSettings(
+                    reasoning=Reasoning(effort=task.effort),
+                )
+
             agent = openai_agents.Agent(
                 name="TaskAgent",
                 instructions=task.system_prompt or "",
                 model=task.model.value.api_id,
+                model_settings=model_settings,
             )
 
             result = await openai_agents.Runner.run(
@@ -495,6 +506,7 @@ class AgentTasksDBMixin:
                 max_turns=task.max_turns,
                 permission_mode="acceptEdits",
                 output_format=output_format,
+                effort=task.effort,
             )
 
             tool_calls = []

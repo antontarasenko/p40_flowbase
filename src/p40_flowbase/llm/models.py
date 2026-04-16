@@ -21,7 +21,10 @@ from sqlmodel import (
     SQLModel,
 )
 
-from p40_flowbase.llm.providers import LLMModels
+from p40_flowbase.llm.providers import (
+    LLMEffort,
+    LLMModels,
+)
 
 
 class LLMRequestGroup(SQLModel, table=True):
@@ -90,6 +93,10 @@ class LLMRequest(SQLModel, table=True):
 
     model: LLMModels = Field(sa_column=Column(SQLAEnum(LLMModels)))
     temperature: float | None = None
+    effort: LLMEffort | None = Field(
+        default=None,
+        sa_column=Column(SQLAEnum(LLMEffort), nullable=True),
+    )
     system_prompt: str | None = None
     user_prompt: str | None = None
     attachments: str | None = None  # JSON list of llm_file_ids

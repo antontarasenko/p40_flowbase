@@ -7,6 +7,8 @@
 - Fix `get_existing_formats` missing folders in `CompositeFormat`
 - Upgrade dependencies `claude-agent-sdk`, `openai-agents`, `langgraph`
 - devel: Specify package version for Nix in `VERSION` file
+- Add models `claude_opus_4_6`, `claude_sonnet_4_6`, `gpt_5_4`, `gpt_5_4_mini`
+- Add `effort` parameter to models
 
 ## 0.3.0 (2026-04-11)
 

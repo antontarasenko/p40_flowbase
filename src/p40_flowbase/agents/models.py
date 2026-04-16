@@ -21,7 +21,10 @@ from sqlmodel import (
     SQLModel,
 )
 
-from p40_flowbase.agents.providers import AgentModels
+from p40_flowbase.agents.providers import (
+    AgentEffort,
+    AgentModels,
+)
 
 
 class AgentTaskGroup(SQLModel, table=True):
@@ -95,6 +98,10 @@ class AgentTask(SQLModel, table=True):
 
     # Configuration
     model: AgentModels = Field(sa_column=Column(SQLAEnum(AgentModels)))
+    effort: AgentEffort | None = Field(
+        default=None,
+        sa_column=Column(SQLAEnum(AgentEffort), nullable=True),
+    )
     system_prompt: str | None = None
     task_prompt: str
     allowed_tools: str | None = None
