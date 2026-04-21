@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Migrate package to Dagster
+
 ## 0.3.1 (2026-04-18)
 
 - Pin `claude-agent-sdk` version (0.1.* versioning is too broad)

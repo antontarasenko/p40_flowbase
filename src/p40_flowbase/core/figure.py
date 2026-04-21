@@ -13,7 +13,7 @@ from p40_flowbase.core.formats import FigureFormat
 from p40_flowbase.logging import logger
 
 
-class FigureDataObject(DataObject):
+class Figure(DataObject):
     """Base class for single figure data objects.
 
     Figure objects store matplotlib figures.
@@ -24,19 +24,19 @@ class FigureDataObject(DataObject):
         - SVG: SVG vector graphics
     """
 
-    make_format: FigureFormat = FigureFormat.PKL
+    make_format: FigureFormat = FigureFormat.PKL  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, version):
         super().__init__(version)
-        self._mplf: plt.Figure | None = None
+        self._mplf: plt.Figure | None = None  # pyright: ignore[reportPrivateImportUsage]
 
     @property
-    def mplf(self) -> plt.Figure:
+    def mplf(self) -> plt.Figure:  # pyright: ignore[reportPrivateImportUsage]
         """Return the matplotlib figure (lazy loading)."""
         if self._mplf is None:
             with open(self.path_to_format(FigureFormat.PKL), "rb") as f:
                 self._mplf = pickle.load(f)
-        return self._mplf
+        return self._mplf  # pyright: ignore[reportReturnType]
 
     def _convert_to_pdf(self) -> None:
         """Convert pkl to pdf."""

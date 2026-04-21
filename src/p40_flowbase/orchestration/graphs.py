@@ -180,8 +180,8 @@ def build_recursive_task_graph(
             return "process_step"
         return END
 
-    lane_graph = StateGraph(dict)
-    lane_graph.add_node("process_step", process_step)
+    lane_graph = StateGraph(dict)  # pyright: ignore[reportArgumentType]
+    lane_graph.add_node("process_step", process_step)  # pyright: ignore[reportArgumentType]
     lane_graph.add_conditional_edges(START, should_continue)
     lane_graph.add_conditional_edges("process_step", should_continue)
     compiled_lane = lane_graph.compile()
@@ -227,8 +227,8 @@ def build_recursive_task_graph(
         return {"lane_results": result.get("all_step_results", [])}
 
     main_graph = StateGraph(OverallState)
-    main_graph.add_node("lane_processor", lane_processor)
-    main_graph.add_node("collect_results", collect_results)
+    main_graph.add_node("lane_processor", lane_processor)  # pyright: ignore[reportArgumentType]
+    main_graph.add_node("collect_results", collect_results)  # pyright: ignore[reportArgumentType]
     main_graph.add_conditional_edges(START, fan_out_lanes)
     main_graph.add_edge("lane_processor", "collect_results")
     main_graph.add_edge("collect_results", END)

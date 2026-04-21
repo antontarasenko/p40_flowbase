@@ -11,7 +11,7 @@ from p40_flowbase.core.formats import CompositeFormat
 from p40_flowbase.logging import logger
 
 
-class CompositeDataObject(DataObject):
+class Composite(DataObject):
     """Base class for composite data objects with multiple files stored as directory.
 
     Composite objects store multiple files in a directory structure.
@@ -21,7 +21,7 @@ class CompositeDataObject(DataObject):
         - TAR_ZST: Tar archive with zstd compression
     """
 
-    make_format: CompositeFormat = CompositeFormat.FILES
+    make_format: CompositeFormat = CompositeFormat.FILES  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def _convert_to_zip(self) -> None:
         """Convert files directory to zip."""
@@ -47,7 +47,7 @@ class CompositeDataObject(DataObject):
             stdin=tar_process.stdout,
         )
         try:
-            tar_process.stdout.close()
+            tar_process.stdout.close()  # pyright: ignore[reportOptionalMemberAccess]
             zstd_process.communicate()
             tar_process.wait()
         finally:

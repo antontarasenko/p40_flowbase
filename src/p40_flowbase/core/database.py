@@ -14,7 +14,7 @@ from p40_flowbase.core.formats import DBFormat
 from p40_flowbase.logging import logger
 
 
-class DBDataObject(DataObject):
+class DB(DataObject):
     """Base class for database data objects using async SQLAlchemy and SQLModel.
 
     Database objects store data in SQLite databases with async support.
@@ -22,14 +22,14 @@ class DBDataObject(DataObject):
         - SQLITE: SQLite database file (default)
 
     Attributes:
-        schema: List of SQLModel table classes to create.
+        tables: List of SQLModel table classes to create.
 
-    Subclasses should define their schema and can use HTTP/LLM mixins
-    for request management.
+    Subclasses should define their tables and can use HTTPDB/LLMDB/AgentDB
+    mixins for request management.
     """
 
-    make_format: DBFormat = DBFormat.SQLITE
-    schema: list[Any] = []
+    make_format: DBFormat = DBFormat.SQLITE  # pyright: ignore[reportIncompatibleVariableOverride]
+    tables: list[Any] = []
 
     def __init__(self, version):
         super().__init__(version)
@@ -71,16 +71,16 @@ class DBDataObject(DataObject):
         return self.session_factory()
 
     async def _create_tables(self) -> None:
-        """Create tables defined in schema.
+        """Create tables defined in the ``tables`` attribute.
 
-        If schema is non-empty, only those tables are created. Otherwise
+        If ``tables`` is non-empty, only those tables are created. Otherwise
         falls back to creating all tables registered with SQLModel.
         """
         from sqlmodel import SQLModel as SQLModelBase
 
         tables = [
             cls.__table__
-            for cls in self.schema
+            for cls in self.tables
             if hasattr(cls, "__table__")
         ]
         if tables:
@@ -94,12 +94,12 @@ class DBDataObject(DataObject):
                 await conn.run_sync(SQLModelBase.metadata.create_all)
 
     async def _drop_tables(self) -> None:
-        """Drop all tables defined in schema."""
+        """Drop all tables defined in ``tables``."""
         from sqlmodel import SQLModel as SQLModelBase
 
         tables = [
             cls.__table__
-            for cls in self.schema
+            for cls in self.tables
             if hasattr(cls, "__table__")
         ]
         if tables:
@@ -112,7 +112,7 @@ class DBDataObject(DataObject):
             async with self.engine.begin() as conn:
                 await conn.run_sync(SQLModelBase.metadata.drop_all)
 
-    def _make_default(self) -> None:
+    def _make(self) -> None:
         """Create and save the default format (database file)."""
         self.local_dir.mkdir(parents=True, exist_ok=True)
 
@@ -125,32 +125,27 @@ class DBDataObject(DataObject):
             asyncio.run(_async_make())
         else:
             raise RuntimeError(
-                "Cannot call make() from async context. Use await make_async() instead."
+                "Cannot call make() from async context. Use await create_tables() instead."
             )
 
-    async def make_async(self, replace: bool = False) -> None:
-        """Async version of make() for use in async contexts.
+    async def create_tables(self, replace: bool = False) -> None:
+        """Create the database file and tables.
+
+        Idempotent when ``replace=False``: ``_create_tables`` uses
+        ``metadata.create_all``, which only creates missing tables. Existing
+        tables and their rows are left untouched, so this can be called
+        safely on a re-run of a Request-backed DB workflow.
 
         Args:
-            replace: If True, delete existing master copy and all format copies,
-                then create master copy anew. If False, raise error if master
-                copy already exists.
-
-        Raises:
-            FileExistsError: If master copy exists and replace=False.
+            replace: If True, delete existing master copy and all format
+                copies, then create master copy anew.
         """
-        if self.exists() and not replace:
-            raise FileExistsError(
-                f"Object {self.object_stem} already exists in default format ({self.make_format.value}). "
-                f"Use replace=True to overwrite."
-            )
-
         if replace:
-            self._delete_existing_formats()
+            self.delete()
 
         self.local_dir.mkdir(parents=True, exist_ok=True)
         await self._create_tables()
-        logger.info(f"{self.object_stem} created successfully")
+        logger.info(f"{self.object_stem} ready")
 
     async def convert_async(self, fmt=None, replace: bool = False) -> None:
         """Async version of convert() for use in async contexts.
@@ -171,7 +166,7 @@ class DBDataObject(DataObject):
         if not self.exists():
             raise FileNotFoundError(
                 f"Master copy not found for {self.object_stem}. "
-                f"Call make_async() first to create the master copy in {self.make_format.value} format."
+                f"Call create_tables() first to create the master copy in {self.make_format.value} format."
             )
 
         if not isinstance(self.make_format, StrEnum):
@@ -207,7 +202,7 @@ class DBDataObject(DataObject):
             elif format_path.exists() and replace:
                 self._delete_format(fmt_enum)
 
-        self._convert_formats(formats_to_create)
+        self._convert_formats(formats_to_create)  # pyright: ignore[reportArgumentType]
 
     async def close(self) -> None:
         """Close the database engine and cleanup resources."""

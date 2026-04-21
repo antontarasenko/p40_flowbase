@@ -21,7 +21,7 @@ from p40_flowbase.core.formats import DocumentFormat
 from p40_flowbase.logging import logger
 
 
-class DocumentDataObject(DataObject):
+class Document(DataObject):
     """Base class for Jinja-based document data objects.
 
     Document objects render Jinja templates with data.
@@ -39,7 +39,7 @@ class DocumentDataObject(DataObject):
     Subclasses must implement _make_data() to populate self.data.
     """
 
-    make_format: DocumentFormat = DocumentFormat.MD
+    make_format: DocumentFormat = DocumentFormat.MD  # pyright: ignore[reportIncompatibleVariableOverride]
     template: str
     template_package: str = "p40_flowbase.templates"
     data: dict
@@ -80,7 +80,7 @@ class DocumentDataObject(DataObject):
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise
 
-    def _make_default(self) -> None:
+    def _make(self) -> None:
         """Create and save the default format (md)."""
         self._make_data()
         rendered_path = self._render_template()

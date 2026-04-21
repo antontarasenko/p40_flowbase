@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+import asyncio
 import pathlib
 import shutil
 from abc import (
@@ -60,15 +61,15 @@ class DataObject(ABC):
         - description: Human-readable description.
         - make_format: Default format enum for the make() method.
         - supported_versions: Tuple of version enums.
-        - _make_default(): Method to create the object in default format.
+        - _make(): Method to create the object in default format.
 
     Example:
-        class MyTable(TableDataObject):
+        class MyTable(Table):
             id = "my_table"
             description = "My custom table"
             supported_versions = (MyVersions.V1, MyVersions.V2)
 
-            def _make_default(self):
+            def _make(self):
                 df = pd.DataFrame(...)
                 df.to_parquet(self.path_to_format(TableFormat.PARQUET))
     """
@@ -187,12 +188,21 @@ class DataObject(ABC):
                 )
 
     @abstractmethod
-    def _make_default(self) -> None:
+    def _make(self) -> None:
         """Create and save the object in default format.
 
         Must be implemented by subclasses to create the actual data.
         """
         pass
+
+    async def _amake(self) -> None:
+        """Async hook for ``make()``.
+
+        Default runs sync ``_make`` in a thread so it can be awaited from
+        a running event loop (e.g. a Dagster asset). Subclasses that have
+        an async-native build (``TableFromDB``) override this directly.
+        """
+        await asyncio.to_thread(self._make)
 
     def make(self, replace: bool = False) -> None:
         """Create the master copy of the object in the default format.
@@ -212,10 +222,10 @@ class DataObject(ABC):
             )
 
         if replace:
-            self._delete_existing_formats()
+            self.delete()
 
         self.local_dir.mkdir(parents=True, exist_ok=True)
-        self._make_default()
+        self._make()
         logger.info(f"{self.object_stem} created successfully")
 
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:
@@ -268,20 +278,11 @@ class DataObject(ABC):
 
         self._convert_formats(formats_to_create)
 
-    def _delete_existing_formats(self) -> None:
-        """Delete all existing formats of the object."""
+    def delete(self) -> None:
+        """Delete all on-disk data for this object (master copy and all format copies).
+
+        Idempotent: returns silently if nothing exists to delete.
+        """
         if self.local_dir.exists():
             shutil.rmtree(self.local_dir)
-            logger.info(f"Deleted existing formats for {self.object_stem}")
-
-    def delete(self) -> None:
-        """Delete the master copy and all format copies of this data object.
-
-        Raises:
-            FileNotFoundError: If no data exists for this object version.
-        """
-        if not self.local_dir.exists():
-            raise FileNotFoundError(
-                f"No data found for {self.object_stem}. Nothing to delete."
-            )
-        self._delete_existing_formats()
+            logger.info(f"Deleted {self.object_stem}")

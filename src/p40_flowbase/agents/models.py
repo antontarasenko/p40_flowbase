@@ -33,7 +33,7 @@ class AgentTaskGroup(SQLModel, table=True):
     Subclass this to add custom fields for your use case.
     """
 
-    __tablename__ = "agent_task_groups"
+    __tablename__ = "agent_task_groups"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     agent_task_group_id: uuid.UUID = Field(
@@ -48,7 +48,7 @@ class AgentTaskExtra(SQLModel, table=True):
     Subclass this to add custom fields for your use case.
     """
 
-    __tablename__ = "agent_task_extra"
+    __tablename__ = "agent_task_extra"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     agent_task_extra_id: uuid.UUID = Field(
@@ -63,7 +63,7 @@ class AgentFile(SQLModel, table=True):
     Tracks files that are passed as input to agent tasks.
     """
 
-    __tablename__ = "agent_files"
+    __tablename__ = "agent_files"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     agent_file_id: uuid.UUID = Field(
@@ -87,7 +87,7 @@ class AgentTask(SQLModel, table=True):
     Represents a single task to be executed by an LLM agent.
     """
 
-    __tablename__ = "agent_tasks"
+    __tablename__ = "agent_tasks"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     agent_task_id: uuid.UUID = Field(
@@ -146,7 +146,7 @@ class AgentToolCall(SQLModel, table=True):
     Tracks each tool call made by the agent during execution.
     """
 
-    __tablename__ = "agent_tool_calls"
+    __tablename__ = "agent_tool_calls"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     agent_tool_call_id: uuid.UUID = Field(
@@ -170,7 +170,7 @@ class AgentMessage(SQLModel, table=True):
     Stores the full conversation history including reasoning.
     """
 
-    __tablename__ = "agent_messages"
+    __tablename__ = "agent_messages"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     agent_message_id: uuid.UUID = Field(

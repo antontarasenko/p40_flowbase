@@ -4,11 +4,9 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
-import asyncio
 import json
 import time
 import uuid
-from collections.abc import Callable
 from datetime import (
     UTC,
     datetime,
@@ -17,99 +15,78 @@ from typing import (
     Any,
 )
 
+from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.http.models import HTTPRequest
 from p40_flowbase.logging import logger
 
 
-class HTTPRequestsDBMixin:
-    """Mixin for logging and retrying HTTP requests.
+class HTTPDB(RequestsDBMixin[HTTPRequest]):
+    """DB for logging and retrying HTTP requests.
 
-    Classes using this mixin must include HTTPRequestGroup and HTTPRequest
-    in their schema attribute. Optionally include HTTPRequestExtra for
-    per-request custom metadata.
-
-    Subclasses should implement:
-        - async def _populate_http_requests(self) -> uuid.UUID:
-            Create and add HTTP requests, return the group_id.
+    Subclasses should set ``tables`` to include at least ``HTTPRequestGroup``
+    and ``HTTPRequest`` (plus optionally ``HTTPRequestExtra``), and implement
+    ``_populate_http_requests() -> uuid.UUID`` to create the initial request
+    rows.
     """
 
-    default_rate_limit: float = 5.0
-    default_rate_period: float = 1.0
+    rate_limit: float = 5.0
+    rate_period: float = 1.0
 
-    async def populate(self) -> uuid.UUID:
-        """Populate HTTP requests based on object version and configuration.
+    _request_model = HTTPRequest
+    _pending_column = "requested_at_utc"
 
-        Returns:
-            UUID of the created request group.
-        """
+    @classmethod
+    def _failed_predicate(cls):  # pyright: ignore[reportIncompatibleMethodOverride]
+        from sqlalchemy import and_
+
+        return and_(
+            HTTPRequest.response_status != 200,  # pyright: ignore[reportArgumentType]
+            HTTPRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+        )
+
+    async def _populate(self) -> uuid.UUID:
         if not hasattr(self, "_populate_http_requests"):
             raise NotImplementedError(
-                f"{self.__class__.__name__} must implement _populate_http_requests() method"
+                f"{self.__class__.__name__} must implement "
+                "_populate_http_requests() method"
             )
-        return await self._populate_http_requests()
+        return await self._populate_http_requests()  # pyright: ignore[reportAttributeAccessIssue]
 
-    async def execute(
+    async def _execute_pending(
         self,
-        group_id: uuid.UUID | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-    ):
-        """Execute pending HTTP requests.
-
-        Args:
-            group_id: If provided, only execute requests from this group.
-            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
-            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
-
-        Returns:
-            List of executed request entries.
-        """
+        group_id: uuid.UUID | str | None = None,
+        rate_limit: float = 5.0,
+        rate_period: float = 1.0,
+    ) -> list[HTTPRequest]:
         return await self._execute_pending_http_requests(
-            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
-            rate_period=rate_period if rate_period is not None else self.default_rate_period,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
             http_request_group_id=str(group_id) if group_id else None,
         )
 
-    async def retry(
+    async def _retry_failed(
         self,
-        group_id: uuid.UUID | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-    ):
-        """Retry failed HTTP requests.
-
-        Args:
-            group_id: If provided, only retry requests from this group.
-            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
-            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
-
-        Returns:
-            List of retried request entries.
-        """
+        group_id: uuid.UUID | str | None = None,
+        rate_limit: float = 5.0,
+        rate_period: float = 1.0,
+    ) -> list[HTTPRequest]:
         return await self._retry_failed_http_requests(
-            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
-            rate_period=rate_period if rate_period is not None else self.default_rate_period,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
             http_request_group_id=str(group_id) if group_id else None,
         )
+
+    async def _get_wave_results(
+        self,
+        group_id: uuid.UUID,
+    ) -> list[HTTPRequest]:
+        return await self._get_http_wave_results(group_id=group_id)
 
     async def _add_http_requests(
         self,
         requests: list[dict[str, Any]],
     ) -> list[HTTPRequest]:
-        """Add HTTP requests to the database for later execution.
-
-        Args:
-            requests: List of dicts with request fields. Each dict should contain:
-                - request_url (str): URL to request
-                - request_method (str): HTTP method (GET, POST, etc.)
-                - request_headers (Optional[str]): JSON string of headers
-                - request_body (Optional[str]): Request body
-                - http_request_group_id (Optional[uuid.UUID]): Reference to request group
-                - http_request_extra_id (Optional[uuid.UUID]): Reference to request extra metadata
-
-        Returns:
-            List of created HTTPRequest entries.
-        """
+        """Add HTTP requests to the database for later execution."""
         created_logs = []
 
         async with self.session_factory() as session:
@@ -141,20 +118,7 @@ class HTTPRequestsDBMixin:
         request_body: str | None,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Execute a single HTTP request and return response data.
-
-        Args:
-            http_client: aiohttp.ClientSession instance.
-            request_method: HTTP method (GET, POST, etc.).
-            request_url: URL to request.
-            request_headers: JSON string of headers or None.
-            request_body: Request body string or None.
-            ephemeral_headers: Headers to include in request but not store in database.
-
-        Returns:
-            Dict containing response_status, response_headers, response_body_text,
-            response_size, latency, and requested_at_utc.
-        """
+        """Execute a single HTTP request and return response data."""
         requested_at_utc = datetime.now(UTC)
         start_time = time.monotonic()
 
@@ -195,27 +159,13 @@ class HTTPRequestsDBMixin:
         ephemeral_headers: dict[str, str] | None = None,
         http_request_group_id: str | None = None,
     ):
-        """Execute all requests where requested_at_utc is null.
-
-        Args:
-            rate_limit: Maximum number of requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            ephemeral_headers: Headers to include in requests but not store in database.
-            http_request_group_id: If provided, only process requests from this group.
-
-        Returns:
-            List of executed request entries with responses populated.
-        """
+        """Execute all HTTP requests where ``requested_at_utc`` is null."""
         import aiohttp
         from sqlmodel import select
 
-        from p40_flowbase.helpers.rate_limit import create_limiter
-
-        limiter = create_limiter(rate_limit, rate_period)
-
         async with self.session_factory() as session:
             statement = select(HTTPRequest).where(
-                HTTPRequest.requested_at_utc.is_(None)
+                HTTPRequest.requested_at_utc.is_(None)  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if http_request_group_id is not None:
                 group_uuid = (
@@ -230,57 +180,21 @@ class HTTPRequestsDBMixin:
             rows = result.all()
 
         async with aiohttp.ClientSession() as http_client:
-
-            async def rate_limited_request(row):
-                async with limiter:
-                    pass
+            async def execute_one(row: HTTPRequest) -> HTTPRequest:
                 return await self._process_single_http_request(
                     http_client,
                     row,
                     ephemeral_headers,
                 )
 
-            tasks = [rate_limited_request(row) for row in rows]
-
-            executed = []
-            successful_count = 0
-            failed_count = 0
-            total_count = 0
-            start_time = time.time()
-
-            for completed_task in asyncio.as_completed(tasks):
-                total_count += 1
-                try:
-                    result = await completed_task
-                except Exception as e:
-                    failed_count += 1
-                    logger.error(f"HTTP request failed with exception: {e}")
-                    continue
-                executed.append(result)
-
-                if result.response_status == 200:
-                    successful_count += 1
-                else:
-                    failed_count += 1
-
-                if total_count % 100 == 0:
-                    elapsed = time.time() - start_time
-                    effective_rps = total_count / elapsed if elapsed > 0 else 0
-                    logger.info(
-                        f"Progress: {total_count} completed "
-                        f"({successful_count} succeeded, {failed_count} failed), "
-                        f"{elapsed:.1f}s elapsed, {effective_rps:.2f} RPS"
-                    )
-
-            elapsed = time.time() - start_time
-            effective_rps = total_count / elapsed if elapsed > 0 else 0
-            logger.info(
-                f"Completed processing {total_count} HTTP requests: "
-                f"{successful_count} succeeded, {failed_count} failed, "
-                f"{elapsed:.1f}s total, {effective_rps:.2f} RPS"
+            return await self._run_batch(
+                rows=list(rows),
+                execute_one=execute_one,
+                rate_limit=rate_limit,
+                rate_period=rate_period,
+                is_success=lambda r: r.response_status == 200,
+                label="HTTP request",
             )
-
-        return executed
 
     async def _process_single_http_request(
         self,
@@ -288,16 +202,7 @@ class HTTPRequestsDBMixin:
         row: HTTPRequest,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> HTTPRequest:
-        """Process a single HTTP request.
-
-        Args:
-            http_client: aiohttp ClientSession instance.
-            row: HTTP request to execute.
-            ephemeral_headers: Headers to include but not store in database.
-
-        Returns:
-            Updated HTTP request with response populated.
-        """
+        """Execute ``row`` and persist the response on the same row."""
         response_data = await self._execute_http_request(
             http_client=http_client,
             request_method=row.request_method,
@@ -318,7 +223,8 @@ class HTTPRequestsDBMixin:
         if row.response_status != 200:
             logger.error(
                 f"HTTP request failed with status {row.response_status} "
-                f"(http_request_id: {row.http_request_id}, url: {row.request_url}). "
+                f"(http_request_id: {row.http_request_id}, "
+                f"url: {row.request_url}). "
                 f"Response body: {row.response_body_text}"
             )
 
@@ -330,16 +236,7 @@ class HTTPRequestsDBMixin:
         row: HTTPRequest,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> HTTPRequest:
-        """Retry a single failed HTTP request and create a new log entry.
-
-        Args:
-            http_client: aiohttp ClientSession instance.
-            row: Failed HTTP request to retry.
-            ephemeral_headers: Headers to include but not store in database.
-
-        Returns:
-            New HTTPRequest entry with retry response.
-        """
+        """Retry a failed request by inserting a new row with the new response."""
         response_data = await self._execute_http_request(
             http_client=http_client,
             request_method=row.request_method,
@@ -374,17 +271,7 @@ class HTTPRequestsDBMixin:
         ephemeral_headers: dict[str, str] | None = None,
         http_request_group_id: str | None = None,
     ):
-        """Retry all requests that did not return status 200.
-
-        Args:
-            rate_limit: Maximum number of requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            ephemeral_headers: Headers to include in requests but not store in database.
-            http_request_group_id: If provided, only process requests from this group.
-
-        Returns:
-            List of original failed request entries that were retried.
-        """
+        """Retry all HTTP requests with response_status != 200."""
         import aiohttp
         import sqlalchemy
         from sqlmodel import select
@@ -396,7 +283,7 @@ class HTTPRequestsDBMixin:
         async with self.session_factory() as session:
             statement = select(HTTPRequest).where(
                 HTTPRequest.response_status != 200,
-                HTTPRequest.superseded_by_id.is_(None),
+                HTTPRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if http_request_group_id is not None:
                 group_uuid = (
@@ -423,9 +310,12 @@ class HTTPRequestsDBMixin:
                         await session.execute(
                             sqlalchemy.update(HTTPRequest)
                             .where(
-                                HTTPRequest.http_request_id == row.http_request_id
+                                HTTPRequest.http_request_id
+                                == row.http_request_id  # pyright: ignore[reportArgumentType]
                             )
-                            .values(superseded_by_id=new_request.http_request_id)
+                            .values(
+                                superseded_by_id=new_request.http_request_id
+                            )
                         )
                         await session.commit()
                 except Exception as e:
@@ -434,150 +324,19 @@ class HTTPRequestsDBMixin:
                     )
                     continue
 
-        return rows
+        return list(rows)
 
     async def _get_http_wave_results(
         self,
         group_id: uuid.UUID,
     ) -> list[HTTPRequest]:
-        """Get non-superseded HTTP requests for a group.
-
-        Args:
-            group_id: The request group UUID.
-
-        Returns:
-            List of HTTPRequest entries that have not been superseded.
-        """
+        """Return non-superseded HTTP requests for ``group_id``."""
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(HTTPRequest).where(
                 HTTPRequest.http_request_group_id == group_id,
-                HTTPRequest.superseded_by_id.is_(None),
+                HTTPRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             result = await session.exec(statement)
-            return result.all()
-
-    async def _execute_http_request_graph(
-        self,
-        lanes: list[str],
-        num_steps: int,
-        populate_step: Callable,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-        max_retries: int = 1,
-        checkpointer: Any | None = None,
-        thread_id: str | None = None,
-    ) -> dict[str, list[list]]:
-        """Execute a parallel-lane, sequential-step graph for HTTP requests.
-
-        Args:
-            lanes: List of lane identifiers.
-            num_steps: Number of sequential steps per lane.
-            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            max_retries: Maximum retry attempts per step.
-            checkpointer: Optional LangGraph checkpointer.
-            thread_id: Thread ID for checkpointer resumability.
-
-        Returns:
-            Dict mapping lane_id to list of step results (each a list of HTTPRequest).
-        """
-        from p40_flowbase.orchestration.graphs import (
-            build_recursive_task_graph,
-        )
-
-        effective_rate_limit = rate_limit if rate_limit is not None else self.default_rate_limit
-        effective_rate_period = rate_period if rate_period is not None else self.default_rate_period
-
-        async def execute_pending_wrapper(group_id_str: str) -> list:
-            return await self._execute_pending_http_requests(
-                rate_limit=effective_rate_limit,
-                rate_period=effective_rate_period,
-                http_request_group_id=group_id_str,
-            )
-
-        async def retry_failed_wrapper(group_id_str: str) -> list:
-            return await self._retry_failed_http_requests(
-                rate_limit=effective_rate_limit,
-                rate_period=effective_rate_period,
-                http_request_group_id=group_id_str,
-            )
-
-        async def get_wave_results_wrapper(group_id: uuid.UUID) -> list:
-            return await self._get_http_wave_results(group_id=group_id)
-
-        graph = build_recursive_task_graph(
-            populate_step=populate_step,
-            execute_pending=execute_pending_wrapper,
-            retry_failed=retry_failed_wrapper,
-            get_wave_results=get_wave_results_wrapper,
-            checkpointer=checkpointer,
-        )
-
-        config = {}
-        if thread_id is not None or checkpointer is not None:
-            config["configurable"] = {
-                "thread_id": thread_id or uuid.uuid4().hex,
-            }
-
-        result = await graph.ainvoke(
-            {
-                "lanes": lanes,
-                "num_steps": num_steps,
-                "max_retries": max_retries,
-                "lane_results": [],
-            },
-            config=config if config else None,
-        )
-
-        return result.get("organized_results", {})
-
-    async def execute_graph(
-        self,
-        lanes: list[str],
-        num_steps: int,
-        populate_step: Callable | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-        max_retries: int = 1,
-        checkpointer: Any | None = None,
-        thread_id: str | None = None,
-    ) -> dict[str, list[list]]:
-        """Execute a parallel-lane, sequential-step graph for HTTP requests.
-
-        Convenience method that defaults populate_step to self._populate_lane_step.
-
-        Args:
-            lanes: List of lane identifiers.
-            num_steps: Number of sequential steps per lane.
-            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
-                Defaults to self._populate_lane_step if not provided.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            max_retries: Maximum retry attempts per step.
-            checkpointer: Optional LangGraph checkpointer.
-            thread_id: Thread ID for checkpointer resumability.
-
-        Returns:
-            Dict mapping lane_id to list of step results (each a list of HTTPRequest).
-        """
-        if populate_step is None:
-            if not hasattr(self, "_populate_lane_step"):
-                raise NotImplementedError(
-                    f"{self.__class__.__name__} must implement _populate_lane_step() "
-                    "or pass populate_step argument"
-                )
-            populate_step = self._populate_lane_step
-
-        return await self._execute_http_request_graph(
-            lanes=lanes,
-            num_steps=num_steps,
-            populate_step=populate_step,
-            rate_limit=rate_limit,
-            rate_period=rate_period,
-            max_retries=max_retries,
-            checkpointer=checkpointer,
-            thread_id=thread_id,
-        )
+            return list(result.all())

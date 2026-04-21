@@ -4,16 +4,22 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
+from abc import abstractmethod
+from typing import (
+    Generic,
+    TypeVar,
+)
 
 import pandas as pd
 import pydantic as pyd
 
 from p40_flowbase.core.base import DataObject
+from p40_flowbase.core.database import DB
 from p40_flowbase.core.formats import TableFormat
 from p40_flowbase.logging import logger
 
 
-class TableDataObject(DataObject):
+class Table(DataObject):
     """Base class for tabular data objects.
 
     Table objects store data as pandas DataFrames.
@@ -25,18 +31,18 @@ class TableDataObject(DataObject):
         - JSON: JSON array of records
 
     Attributes:
-        schema: Pydantic model class defining the table schema.
+        row_schema: Pydantic model class defining the row schema.
     """
 
-    make_format: TableFormat = TableFormat.PARQUET
-    schema: type[pyd.BaseModel]
+    make_format: TableFormat = TableFormat.PARQUET  # pyright: ignore[reportIncompatibleVariableOverride]
+    row_schema: type[pyd.BaseModel]
 
     def __init__(self, version):
         super().__init__(version)
         self._df: pd.DataFrame | None = None
 
     @property
-    def pdf(self) -> pd.DataFrame:
+    def df(self) -> pd.DataFrame:
         """Return the object as pandas DataFrame (lazy loading)."""
         if self._df is None:
             self._df = pd.read_parquet(
@@ -74,7 +80,7 @@ class TableDataObject(DataObject):
         md_content = df.to_markdown(index=False)
         md_path = self.path_to_format(TableFormat.MD)
         with open(md_path, "w") as f:
-            f.write(md_content)
+            f.write(md_content or "")
         logger.info(f"Converted to Markdown: {md_path}")
 
     def _convert_to_json(self) -> None:
@@ -86,3 +92,62 @@ class TableDataObject(DataObject):
         json_path = self.path_to_format(TableFormat.JSON)
         df.to_json(json_path, orient="records", indent=2)
         logger.info(f"Converted to JSON: {json_path}")
+
+
+TDB = TypeVar("TDB", bound=DB)
+
+
+class TableFromDB(Table, Generic[TDB]):
+    """Table built by extracting a DataFrame from a companion ``DB``.
+
+    Subclasses set ``db_class`` and implement ``async _build_df(self, db)``.
+    ``_amake`` opens the DB, builds the frame, writes parquet, then closes
+    the DB. No ``exists()`` fallback — the upstream DB is assumed to already
+    be materialized (in Dagster, ensure this via ``deps=[...]``).
+
+    Example:
+        class MyTable(TableFromDB[MyDB]):
+            id = "my_table"
+            db_class = MyDB
+            row_schema = MyRowSchema
+            supported_versions = (MyVersions.V1,)
+
+            async def _build_df(self, db: MyDB) -> pd.DataFrame:
+                async with db.session_factory() as session:
+                    ...
+                return df
+    """
+
+    db_class: type[TDB]
+
+    @abstractmethod
+    async def _build_df(self, db: TDB) -> pd.DataFrame:
+        """Return a DataFrame extracted from ``db``.
+
+        Subclasses must implement this method.
+        """
+
+    async def _amake(self) -> None:
+        self.local_dir.mkdir(parents=True, exist_ok=True)
+        db = self.db_class(self.version)
+        try:
+            df = await self._build_df(db)
+            df.convert_dtypes(dtype_backend="pyarrow").to_parquet(
+                self.path_to_format(TableFormat.PARQUET),
+                index=False,
+            )
+        finally:
+            await db.close()
+
+    def _make(self) -> None:
+        import asyncio
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self._amake())
+        else:
+            raise RuntimeError(
+                "Cannot call make() from an async context. "
+                "Use `await obj._amake()` instead."
+            )

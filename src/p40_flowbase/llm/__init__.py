@@ -1,6 +1,6 @@
 """LLM request infrastructure for p40_flowbase."""
 
-from p40_flowbase.llm.mixin import LLMRequestsDBMixin
+from p40_flowbase.llm.mixin import LLMDB
 from p40_flowbase.llm.models import (
     LLMFile,
     LLMRequest,
@@ -14,6 +14,7 @@ from p40_flowbase.llm.providers import (
 )
 
 __all__ = [
+    "LLMDB",
     "LLMFile",
     "LLMModelVersion",
     "LLMModels",
@@ -21,5 +22,4 @@ __all__ = [
     "LLMRequest",
     "LLMRequestExtra",
     "LLMRequestGroup",
-    "LLMRequestsDBMixin",
 ]

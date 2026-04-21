@@ -33,7 +33,7 @@ class LLMRequestGroup(SQLModel, table=True):
     Subclasses can extend this table with additional columns to parametrize groups.
     """
 
-    __tablename__ = "llm_request_groups"
+    __tablename__ = "llm_request_groups"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     llm_request_group_id: uuid.UUID = Field(
@@ -48,7 +48,7 @@ class LLMRequestExtra(SQLModel, table=True):
     Subclasses can extend this table with additional columns.
     """
 
-    __tablename__ = "llm_requests_extra"
+    __tablename__ = "llm_requests_extra"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     llm_request_extra_id: uuid.UUID = Field(
@@ -60,7 +60,7 @@ class LLMRequestExtra(SQLModel, table=True):
 class LLMFile(SQLModel, table=True):
     """File attachment for LLM requests."""
 
-    __tablename__ = "llm_files"
+    __tablename__ = "llm_files"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     llm_file_id: uuid.UUID = Field(
@@ -82,7 +82,7 @@ class LLMFile(SQLModel, table=True):
 class LLMRequest(SQLModel, table=True):
     """LLM request and its response."""
 
-    __tablename__ = "llm_requests"
+    __tablename__ = "llm_requests"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     llm_request_id: uuid.UUID = Field(

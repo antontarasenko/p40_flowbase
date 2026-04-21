@@ -4,12 +4,9 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
-import asyncio
 import json
 import pathlib
-import time
 import uuid
-from collections.abc import Callable
 from datetime import (
     UTC,
     datetime,
@@ -20,6 +17,7 @@ from typing import (
 
 import pydantic as pyd
 
+from p40_flowbase.http.mixin import HTTPDB
 from p40_flowbase.http.models import (
     HTTPRequest,
     HTTPRequestGroup,
@@ -37,16 +35,10 @@ from p40_flowbase.logging import logger
 
 
 def _ensure_additional_properties_false(schema: dict[str, Any]) -> dict[str, Any]:
-    """Recursively set additionalProperties to false on all object-type schemas.
+    """Recursively set additionalProperties=false on every object-type schema.
 
-    Required by providers like Anthropic and OpenAI (strict mode) for structured
-    output schemas.
-
-    Args:
-        schema: JSON schema dict (modified in place and returned).
-
-    Returns:
-        The same schema dict with additionalProperties set.
+    Required by providers like Anthropic and OpenAI (strict mode) for
+    structured output schemas.
     """
     if not isinstance(schema, dict):
         return schema
@@ -72,28 +64,34 @@ def _ensure_additional_properties_false(schema: dict[str, Any]) -> dict[str, Any
     return schema
 
 
-class LLMRequestsDBMixin:
-    """Mixin for executing LLM requests via HTTP.
+class LLMDB(HTTPDB):
+    """DB for executing LLM requests via HTTP.
 
-    Classes using this mixin must include LLMRequestGroup, LLMRequestExtra,
-    LLMFile, LLMRequest, and HTTP-related models in their schema attribute.
-    The class must also inherit from HTTPRequestsDBMixin.
+    Inherits from ``HTTPDB`` so LLM requests are logged into the same
+    ``HTTPRequest`` table alongside raw HTTP calls. Subclasses should set
+    ``tables`` to include at least ``LLMRequestGroup`` / ``LLMRequestExtra``
+    / ``LLMFile`` / ``LLMRequest`` plus the HTTP tables, and implement
+    ``_populate_llm_requests() -> uuid.UUID``.
 
-    Subclasses should implement:
-        - async def _populate_llm_requests(self) -> uuid.UUID:
-            Create and add LLM requests, return the group_id.
-
-    Configuration:
-        Set API keys via the config module:
-        - config.settings.anthropic_api_key
-        - config.settings.google_api_key
-        - config.settings.openai_api_key
+    Configure API keys via ``LLMDB.set_api_keys(...)`` before execution.
     """
 
-    default_rate_limit: float = 1.0
-    default_rate_period: float = 1.0
+    rate_limit: float = 1.0
+    rate_period: float = 1.0
 
-    # API keys - should be set by project config
+    _request_model = LLMRequest
+    _pending_column = "requested_at_utc"
+
+    @classmethod
+    def _failed_predicate(cls):  # pyright: ignore[reportIncompatibleMethodOverride]
+        from sqlalchemy import and_
+
+        return and_(
+            LLMRequest.requested_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            LLMRequest.response_text.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            LLMRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+        )
+
     _anthropic_api_key: str | None = None
     _google_api_key: str | None = None
     _openai_api_key: str | None = None
@@ -105,106 +103,60 @@ class LLMRequestsDBMixin:
         google_api_key: str | None = None,
         openai_api_key: str | None = None,
     ) -> None:
-        """Set API keys for LLM providers.
-
-        Args:
-            anthropic_api_key: Anthropic API key.
-            google_api_key: Google API key.
-            openai_api_key: OpenAI API key.
-        """
+        """Set API keys for LLM providers."""
         cls._anthropic_api_key = anthropic_api_key
         cls._google_api_key = google_api_key
         cls._openai_api_key = openai_api_key
 
-    async def populate(self) -> uuid.UUID:
-        """Populate LLM requests based on object version and configuration.
-
-        Returns:
-            UUID of the created request group.
-        """
+    async def _populate(self) -> uuid.UUID:
         if not hasattr(self, "_populate_llm_requests"):
             raise NotImplementedError(
-                f"{self.__class__.__name__} must implement _populate_llm_requests() method"
+                f"{self.__class__.__name__} must implement "
+                "_populate_llm_requests() method"
             )
-        return await self._populate_llm_requests()
+        return await self._populate_llm_requests()  # pyright: ignore[reportAttributeAccessIssue]
 
-    async def execute(
+    async def _execute_pending(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
-        group_id: uuid.UUID | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-    ):
-        """Execute pending LLM requests.
-
-        Args:
-            group_id: If provided, only execute requests from this group.
-            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
-            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
-
-        Returns:
-            List of executed LLM request entries.
-        """
+        group_id: uuid.UUID | str | None = None,
+        rate_limit: float = 1.0,
+        rate_period: float = 1.0,
+    ) -> list[LLMRequest]:
         return await self._execute_pending_llm_requests(
-            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
-            rate_period=rate_period if rate_period is not None else self.default_rate_period,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
             llm_request_group_id=str(group_id) if group_id else None,
         )
 
-    async def retry(
+    async def _retry_failed(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
-        group_id: uuid.UUID | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-    ):
-        """Retry failed LLM requests.
-
-        Args:
-            group_id: If provided, only retry requests from this group.
-            rate_limit: Maximum requests per rate_period. Defaults to self.default_rate_limit.
-            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
-
-        Returns:
-            List of retried LLM request entries.
-        """
+        group_id: uuid.UUID | str | None = None,
+        rate_limit: float = 1.0,
+        rate_period: float = 1.0,
+    ) -> list[LLMRequest]:
         return await self._retry_failed_llm_requests(
-            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
-            rate_period=rate_period if rate_period is not None else self.default_rate_period,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
             llm_request_group_id=str(group_id) if group_id else None,
         )
+
+    async def _get_wave_results(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self,
+        group_id: uuid.UUID,
+    ) -> list[LLMRequest]:
+        return await self._get_llm_wave_results(group_id=group_id)
 
     def _model_to_json_schema(self, model_class: type[pyd.BaseModel]) -> dict[str, Any]:
-        """Convert Pydantic or SQLModel model to JSON schema.
-
-        Args:
-            model_class: Pydantic BaseModel or SQLModel class
-
-        Returns:
-            JSON schema dict
-        """
+        """Convert Pydantic or SQLModel model to a strict-mode JSON schema."""
         schema = model_class.model_json_schema()
         return _ensure_additional_properties_false(schema)
 
     def _get_llm_model(self, model_id: str) -> LLMModelVersion:
-        """Get LLM model metadata by model ID.
-
-        Args:
-            model_id: The model identifier (e.g., "gemini_2_5_flash_lite").
-
-        Returns:
-            LLMModelVersion metadata for the model.
-
-        Raises:
-            ValueError: If model_id is not found.
-        """
-        for model_enum in LLMModels:
-            if model_enum.value.id == model_id:
-                return model_enum.value
-        raise ValueError(
-            f"Unknown model '{model_id}'. Supported models: {[m.value.id for m in LLMModels]}"
-        )
+        """Return LLM model metadata by id."""
+        return LLMModels.by_id(model_id).value
 
     def _get_provider_for_model(self, model: str) -> LLMProviders:
-        """Get the provider for a given model."""
+        """Return the provider for a given model id."""
         return self._get_llm_model(model).provider
 
     def _build_anthropic_request(
@@ -395,7 +347,7 @@ class LLMRequestsDBMixin:
         return message.get("content", "")
 
     def _get_media_type(self, filename: str) -> str:
-        """Get MIME type from filename."""
+        """Return MIME type from filename extension."""
         ext = filename.lower().split(".")[-1] if "." in filename else ""
         media_types = {
             "png": "image/png",
@@ -414,23 +366,7 @@ class LLMRequestsDBMixin:
         self,
         requests: list[dict[str, Any]],
     ) -> list[LLMRequest]:
-        """Add LLM requests to the database for later execution.
-
-        Args:
-            requests: List of dicts with request fields. Each dict should contain:
-                - model (LLMModels): LLM model enum
-                - system_prompt (Optional[str]): System prompt
-                - user_prompt (Optional[str]): User prompt
-                - temperature (Optional[float]): Temperature setting
-                - effort (Optional[str]): Reasoning effort level
-                - attachments (Optional[List[str]]): List of llm_file_ids
-                - response_schema (Optional[Type[pyd.BaseModel] | dict]): Schema
-                - llm_request_group_id (Optional[uuid.UUID]): Reference to group
-                - llm_request_extra_id (Optional[uuid.UUID]): Reference to extra
-
-        Returns:
-            List of created LLMRequest entries.
-        """
+        """Insert LLM request rows for later execution."""
         created_requests = []
 
         async with self.session_factory() as session:
@@ -492,18 +428,7 @@ class LLMRequestsDBMixin:
         data_object_version: str,
         data_object_format: str,
     ) -> LLMFile:
-        """Add a file to the llm_files table.
-
-        Args:
-            file_path: Path to the file.
-            data_object_class_name: Name of the data object class.
-            data_object_id: ID of the data object.
-            data_object_version: Version of the data object.
-            data_object_format: Format of the data object.
-
-        Returns:
-            Created LLMFile entry.
-        """
+        """Insert a file row into the llm_files table."""
         import hashlib
 
         with open(file_path, "rb") as f:
@@ -541,14 +466,7 @@ class LLMRequestsDBMixin:
         self,
         llm_request: LLMRequest,
     ) -> list[dict[str, str]]:
-        """Load and encode attachment files for an LLM request.
-
-        Args:
-            llm_request: LLM request with attachments field.
-
-        Returns:
-            List of dicts with base64_data, media_type, and name.
-        """
+        """Load and base64-encode attachments for an LLM request."""
         import base64
 
         from sqlmodel import select
@@ -610,16 +528,7 @@ class LLMRequestsDBMixin:
         attachments_data: list[dict[str, str]],
         ephemeral_headers: dict[str, str] | None = None,
     ) -> tuple[str, dict[str, str], dict[str, str], dict[str, Any]]:
-        """Prepare HTTP request for LLM API call.
-
-        Args:
-            llm_request: LLM request to prepare.
-            attachments_data: Loaded attachment data.
-            ephemeral_headers: Additional headers not stored in database.
-
-        Returns:
-            Tuple of (api_url, stored_headers, ephemeral_headers, request_body).
-        """
+        """Prepare provider-specific URL, headers, and body for an LLM request."""
         llm_model = llm_request.model.value
         provider = llm_model.provider
 
@@ -695,15 +604,7 @@ class LLMRequestsDBMixin:
         http_request: HTTPRequest,
         model: LLMModels,
     ) -> str | None:
-        """Parse LLM response from HTTP request.
-
-        Args:
-            http_request: HTTP request with response body.
-            model: LLM model enum to determine provider.
-
-        Returns:
-            Parsed response text if status is 200, None otherwise.
-        """
+        """Parse provider response from the underlying ``HTTPRequest`` row."""
         if not http_request or not http_request.response_body_text:
             logger.warning(
                 f"LLM request failed: No HTTP request or response body "
@@ -734,16 +635,7 @@ class LLMRequestsDBMixin:
         llm_request: LLMRequest,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> LLMRequest:
-        """Process a single LLM request.
-
-        Args:
-            http_client: aiohttp ClientSession instance.
-            llm_request: LLM request to process.
-            ephemeral_headers: Additional headers not stored in database.
-
-        Returns:
-            LLM request with response populated.
-        """
+        """Execute a single LLM request via its underlying HTTP call."""
         attachments_data = await self._load_attachment_data(llm_request)
 
         (
@@ -758,20 +650,20 @@ class LLMRequestsDBMixin:
         )
 
         http_request_group_class = HTTPRequestGroup
-        for schema_class in self.schema:
+        for table_class in self.tables:
             if (
-                hasattr(schema_class, "__tablename__")
-                and schema_class.__tablename__ == "http_request_groups"
-                and schema_class != HTTPRequestGroup
+                hasattr(table_class, "__tablename__")
+                and table_class.__tablename__ == "http_request_groups"
+                and table_class != HTTPRequestGroup
             ):
-                http_request_group_class = schema_class
+                http_request_group_class = table_class
                 break
 
         if http_request_group_class == HTTPRequestGroup:
             http_request_group = HTTPRequestGroup()
         else:
             http_request_group = http_request_group_class(
-                created_by_class="LLMRequestsDBMixin"
+                created_by_class="LLMDB"  # pyright: ignore[reportCallIssue]
             )
 
         async with self.session_factory() as session:
@@ -822,26 +714,12 @@ class LLMRequestsDBMixin:
         llm_request_group_id: str | None = None,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> list[LLMRequest]:
-        """Execute all LLM requests where requested_at_utc is null.
-
-        Args:
-            rate_limit: Maximum number of requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            llm_request_group_id: If provided, only process requests from this group.
-            ephemeral_headers: Additional headers not stored in database.
-
-        Returns:
-            List of executed LLMRequest entries with responses populated.
-        """
+        """Execute all LLM requests where ``requested_at_utc`` is null."""
         import aiohttp
         from sqlmodel import select
 
-        from p40_flowbase.helpers.rate_limit import create_limiter
-
-        limiter = create_limiter(rate_limit, rate_period)
-
         async with self.session_factory() as session:
-            statement = select(LLMRequest).where(LLMRequest.requested_at_utc.is_(None))
+            statement = select(LLMRequest).where(LLMRequest.requested_at_utc.is_(None))  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             if llm_request_group_id is not None:
                 group_uuid = (
                     uuid.UUID(llm_request_group_id)
@@ -855,57 +733,21 @@ class LLMRequestsDBMixin:
             llm_requests = result.all()
 
         async with aiohttp.ClientSession() as http_client:
-
-            async def rate_limited_request(llm_request):
-                async with limiter:
-                    pass
+            async def execute_one(llm_request: LLMRequest) -> LLMRequest:
                 return await self._process_single_llm_request(
                     http_client,
                     llm_request,
                     ephemeral_headers,
                 )
 
-            tasks = [rate_limited_request(req) for req in llm_requests]
-
-            executed = []
-            successful_count = 0
-            failed_count = 0
-            total_count = 0
-            start_time = time.time()
-
-            for completed_task in asyncio.as_completed(tasks):
-                total_count += 1
-                try:
-                    result = await completed_task
-                except Exception as e:
-                    failed_count += 1
-                    logger.error(f"LLM request failed with exception: {e}")
-                    continue
-                executed.append(result)
-
-                if result.response_text is not None:
-                    successful_count += 1
-                else:
-                    failed_count += 1
-
-                if total_count % 100 == 0:
-                    elapsed = time.time() - start_time
-                    effective_rps = total_count / elapsed if elapsed > 0 else 0
-                    logger.info(
-                        f"Progress: {total_count} completed "
-                        f"({successful_count} succeeded, {failed_count} failed), "
-                        f"{elapsed:.1f}s elapsed, {effective_rps:.2f} RPS"
-                    )
-
-            elapsed = time.time() - start_time
-            effective_rps = total_count / elapsed if elapsed > 0 else 0
-            logger.info(
-                f"Completed processing {total_count} LLM requests: "
-                f"{successful_count} succeeded, {failed_count} failed, "
-                f"{elapsed:.1f}s total, {effective_rps:.2f} RPS"
+            return await self._run_batch(
+                rows=list(llm_requests),
+                execute_one=execute_one,
+                rate_limit=rate_limit,
+                rate_period=rate_period,
+                is_success=lambda r: r.response_text is not None,
+                label="LLM request",
             )
-
-        return executed
 
     async def _retry_failed_llm_requests(
         self,
@@ -916,25 +758,17 @@ class LLMRequestsDBMixin:
     ) -> list[LLMRequest]:
         """Retry LLM requests that failed.
 
-        Creates new LLMRequest entries for each failed request and executes them.
-
-        Args:
-            rate_limit: Maximum number of requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            llm_request_group_id: If provided, only process requests from this group.
-            ephemeral_headers: Additional headers not stored in database.
-
-        Returns:
-            List of new LLMRequest entries created for retries.
+        Creates fresh ``LLMRequest`` rows for each failed request (marking
+        the originals as superseded) and executes them in a second pass.
         """
         import sqlalchemy
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(LLMRequest).where(
-                LLMRequest.requested_at_utc.is_not(None),
-                LLMRequest.response_text.is_(None),
-                LLMRequest.superseded_by_id.is_(None),
+                LLMRequest.requested_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                LLMRequest.response_text.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                LLMRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if llm_request_group_id is not None:
                 group_uuid = (
@@ -976,7 +810,7 @@ class LLMRequestsDBMixin:
                 await session.execute(
                     sqlalchemy.update(LLMRequest)
                     .where(
-                        LLMRequest.llm_request_id == failed_request.llm_request_id
+                        LLMRequest.llm_request_id == failed_request.llm_request_id  # pyright: ignore[reportArgumentType]
                     )
                     .values(superseded_by_id=new_request.llm_request_id)
                 )
@@ -993,144 +827,13 @@ class LLMRequestsDBMixin:
         self,
         group_id: uuid.UUID,
     ) -> list[LLMRequest]:
-        """Get non-superseded LLM requests for a group.
-
-        Args:
-            group_id: The request group UUID.
-
-        Returns:
-            List of LLMRequest entries that have not been superseded.
-        """
+        """Return non-superseded LLM requests for ``group_id``."""
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(LLMRequest).where(
                 LLMRequest.llm_request_group_id == group_id,
-                LLMRequest.superseded_by_id.is_(None),
+                LLMRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             result = await session.exec(statement)
-            return result.all()
-
-    async def _execute_llm_request_graph(
-        self,
-        lanes: list[str],
-        num_steps: int,
-        populate_step: Callable,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-        max_retries: int = 1,
-        checkpointer: Any | None = None,
-        thread_id: str | None = None,
-    ) -> dict[str, list[list]]:
-        """Execute a parallel-lane, sequential-step graph for LLM requests.
-
-        Args:
-            lanes: List of lane identifiers.
-            num_steps: Number of sequential steps per lane.
-            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            max_retries: Maximum retry attempts per step.
-            checkpointer: Optional LangGraph checkpointer.
-            thread_id: Thread ID for checkpointer resumability.
-
-        Returns:
-            Dict mapping lane_id to list of step results (each a list of LLMRequest).
-        """
-        from p40_flowbase.orchestration.graphs import (
-            build_recursive_task_graph,
-        )
-
-        effective_rate_limit = rate_limit if rate_limit is not None else self.default_rate_limit
-        effective_rate_period = rate_period if rate_period is not None else self.default_rate_period
-
-        async def execute_pending_wrapper(group_id_str: str) -> list:
-            return await self._execute_pending_llm_requests(
-                rate_limit=effective_rate_limit,
-                rate_period=effective_rate_period,
-                llm_request_group_id=group_id_str,
-            )
-
-        async def retry_failed_wrapper(group_id_str: str) -> list:
-            return await self._retry_failed_llm_requests(
-                rate_limit=effective_rate_limit,
-                rate_period=effective_rate_period,
-                llm_request_group_id=group_id_str,
-            )
-
-        async def get_wave_results_wrapper(group_id: uuid.UUID) -> list:
-            return await self._get_llm_wave_results(group_id=group_id)
-
-        graph = build_recursive_task_graph(
-            populate_step=populate_step,
-            execute_pending=execute_pending_wrapper,
-            retry_failed=retry_failed_wrapper,
-            get_wave_results=get_wave_results_wrapper,
-            checkpointer=checkpointer,
-        )
-
-        config = {}
-        if thread_id is not None or checkpointer is not None:
-            config["configurable"] = {
-                "thread_id": thread_id or uuid.uuid4().hex,
-            }
-
-        result = await graph.ainvoke(
-            {
-                "lanes": lanes,
-                "num_steps": num_steps,
-                "max_retries": max_retries,
-                "lane_results": [],
-            },
-            config=config if config else None,
-        )
-
-        return result.get("organized_results", {})
-
-    async def execute_graph(
-        self,
-        lanes: list[str],
-        num_steps: int,
-        populate_step: Callable | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-        max_retries: int = 1,
-        checkpointer: Any | None = None,
-        thread_id: str | None = None,
-    ) -> dict[str, list[list]]:
-        """Execute a parallel-lane, sequential-step graph for LLM requests.
-
-        Convenience method that defaults populate_step to self._populate_lane_step.
-
-        Args:
-            lanes: List of lane identifiers.
-            num_steps: Number of sequential steps per lane.
-            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
-                Defaults to self._populate_lane_step if not provided.
-            rate_limit: Maximum requests per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            max_retries: Maximum retry attempts per step.
-            checkpointer: Optional LangGraph checkpointer.
-            thread_id: Thread ID for checkpointer resumability.
-
-        Returns:
-            Dict mapping lane_id to list of step results (each a list of LLMRequest).
-        """
-        if populate_step is None:
-            if not hasattr(self, "_populate_lane_step"):
-                raise NotImplementedError(
-                    f"{self.__class__.__name__} must implement _populate_lane_step() "
-                    "or pass populate_step argument"
-                )
-            populate_step = self._populate_lane_step
-
-        return await self._execute_llm_request_graph(
-            lanes=lanes,
-            num_steps=num_steps,
-            populate_step=populate_step,
-            rate_limit=rate_limit,
-            rate_period=rate_period,
-            max_retries=max_retries,
-            checkpointer=checkpointer,
-            thread_id=thread_id,
-        )
+            return list(result.all())

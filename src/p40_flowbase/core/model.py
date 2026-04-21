@@ -17,7 +17,7 @@ from p40_flowbase.core.formats import ModelFormat
 from p40_flowbase.logging import logger
 
 
-class ModelDataObject(DataObject):
+class Model(DataObject):
     """Base class for machine learning model data objects.
 
     Model objects store trained ML models.
@@ -28,7 +28,7 @@ class ModelDataObject(DataObject):
     Subclasses must implement _fit() to train and save the model.
     """
 
-    make_format: ModelFormat = ModelFormat.PKL
+    make_format: ModelFormat = ModelFormat.PKL  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, version):
         super().__init__(version)
@@ -50,7 +50,7 @@ class ModelDataObject(DataObject):
         """
         pass
 
-    def _make_default(self) -> None:
+    def _make(self) -> None:
         """Create and save the default format (pkl)."""
         self._fit()
 

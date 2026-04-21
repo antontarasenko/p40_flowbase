@@ -59,6 +59,18 @@ class LLMModelVersion:
 class LLMModels(Enum):
     """Available LLM models with pricing information."""
 
+    @classmethod
+    def by_id(cls, model_id: str) -> "LLMModels":
+        """Resolve an ``LLMModels`` member by its ``value.id``.
+
+        Raises:
+            ValueError: If no member with the given ID exists.
+        """
+        for member in cls:
+            if member.value.id == model_id:
+                return member
+        raise ValueError(f"Unknown LLM model ID: {model_id}")
+
     CLAUDE_HAIKU_4_5 = LLMModelVersion(
         id="claude_haiku_4_5_20251001",
         api_id="claude-haiku-4-5-20251001",

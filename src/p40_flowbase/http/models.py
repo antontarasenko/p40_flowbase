@@ -22,7 +22,7 @@ class HTTPRequestGroup(SQLModel, table=True):
     Subclasses can extend this table with additional columns to parametrize groups.
     """
 
-    __tablename__ = "http_request_groups"
+    __tablename__ = "http_request_groups"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     http_request_group_id: uuid.UUID = Field(
@@ -37,7 +37,7 @@ class HTTPRequestExtra(SQLModel, table=True):
     Subclasses can extend this table with additional columns.
     """
 
-    __tablename__ = "http_requests_extra"
+    __tablename__ = "http_requests_extra"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     http_request_extra_id: uuid.UUID = Field(
@@ -49,7 +49,7 @@ class HTTPRequestExtra(SQLModel, table=True):
 class HTTPRequest(SQLModel, table=True):
     """HTTP request and its response."""
 
-    __tablename__ = "http_requests"
+    __tablename__ = "http_requests"  # pyright: ignore[reportAssignmentType]
     __table_args__ = {"extend_existing": True}
 
     http_request_id: uuid.UUID = Field(

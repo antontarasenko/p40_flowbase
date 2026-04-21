@@ -4,13 +4,10 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
-import asyncio
 import hashlib
 import json
 import pathlib
-import time
 import uuid
-from collections.abc import Callable
 from datetime import (
     UTC,
     datetime,
@@ -28,28 +25,37 @@ from p40_flowbase.agents.models import (
 from p40_flowbase.agents.providers import (
     AgentProviders,
 )
+from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.logging import logger
 
 
-class AgentTasksDBMixin:
-    """Mixin for executing agent tasks via LLM SDKs.
+class AgentDB(RequestsDBMixin[AgentTask]):
+    """DB for executing agent tasks via the OpenAI / Anthropic agent SDKs.
 
-    Classes using this mixin must include AgentTaskGroup, AgentTaskExtra,
-    AgentFile, AgentTask, AgentToolCall, and AgentMessage in their schema
-    attribute.
+    Subclasses should set ``tables`` to include at least ``AgentTaskGroup``,
+    ``AgentTaskExtra``, ``AgentFile``, ``AgentTask``, ``AgentToolCall``, and
+    ``AgentMessage``, and implement
+    ``_populate_agent_tasks() -> uuid.UUID``.
 
-    Subclasses should implement:
-        - async def _populate_agent_tasks(self) -> uuid.UUID:
-            Create and add agent tasks, return the group_id.
-
-    Configuration:
-        Set API keys via the set_api_keys classmethod before execution.
+    Configure API keys via ``AgentDB.set_api_keys(...)`` before execution.
     """
 
-    default_rate_limit: float = 1.0
-    default_rate_period: float = 1.0
+    rate_limit: float = 1.0
+    rate_period: float = 1.0
 
-    # API keys - should be set by project config
+    _request_model = AgentTask
+    _pending_column = "started_at_utc"
+
+    @classmethod
+    def _failed_predicate(cls):  # pyright: ignore[reportIncompatibleMethodOverride]
+        from sqlalchemy import and_
+
+        return and_(
+            AgentTask.started_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            AgentTask.is_error == True,  # pyright: ignore[reportArgumentType]
+            AgentTask.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+        )
+
     _openai_api_key: str | None = None
     _anthropic_api_key: str | None = None
 
@@ -59,96 +65,59 @@ class AgentTasksDBMixin:
         openai_api_key: str | None = None,
         anthropic_api_key: str | None = None,
     ) -> None:
-        """Set API keys for agent providers.
-
-        Args:
-            openai_api_key: OpenAI API key.
-            anthropic_api_key: Anthropic API key.
-        """
+        """Set API keys for agent providers."""
         cls._openai_api_key = openai_api_key
         cls._anthropic_api_key = anthropic_api_key
 
-    async def populate(self) -> uuid.UUID:
-        """Populate agent tasks based on object version and configuration.
-
-        Returns:
-            UUID of the created task group.
-        """
+    async def _populate(self) -> uuid.UUID:
         if not hasattr(self, "_populate_agent_tasks"):
             raise NotImplementedError(
-                f"{self.__class__.__name__} must implement _populate_agent_tasks() method"
+                f"{self.__class__.__name__} must implement "
+                "_populate_agent_tasks() method"
             )
-        return await self._populate_agent_tasks()
+        return await self._populate_agent_tasks()  # pyright: ignore[reportAttributeAccessIssue]
 
-    async def execute(
+    async def _execute_pending(
         self,
-        group_id: uuid.UUID | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
+        group_id: uuid.UUID | str | None = None,
+        rate_limit: float = 1.0,
+        rate_period: float = 1.0,
     ) -> list[AgentTask]:
-        """Execute pending agent tasks.
-
-        Args:
-            group_id: If provided, only execute tasks from this group.
-            rate_limit: Maximum tasks per rate_period. Defaults to self.default_rate_limit.
-            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
-
-        Returns:
-            List of executed AgentTask entries.
-        """
+        group_uuid = (
+            uuid.UUID(group_id) if isinstance(group_id, str) else group_id
+        )
         return await self._execute_pending_agent_tasks(
-            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
-            rate_period=rate_period if rate_period is not None else self.default_rate_period,
-            agent_task_group_id=group_id,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
+            agent_task_group_id=group_uuid,
         )
 
-    async def retry(
+    async def _retry_failed(
         self,
-        group_id: uuid.UUID | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
+        group_id: uuid.UUID | str | None = None,
+        rate_limit: float = 1.0,
+        rate_period: float = 1.0,
     ) -> list[AgentTask]:
-        """Retry failed agent tasks.
-
-        Args:
-            group_id: If provided, only retry tasks from this group.
-            rate_limit: Maximum tasks per rate_period. Defaults to self.default_rate_limit.
-            rate_period: Time period in seconds for rate limiting. Defaults to self.default_rate_period.
-
-        Returns:
-            List of retried AgentTask entries.
-        """
-        return await self._retry_failed_agent_tasks(
-            rate_limit=rate_limit if rate_limit is not None else self.default_rate_limit,
-            rate_period=rate_period if rate_period is not None else self.default_rate_period,
-            agent_task_group_id=group_id,
+        group_uuid = (
+            uuid.UUID(group_id) if isinstance(group_id, str) else group_id
         )
+        return await self._retry_failed_agent_tasks(
+            rate_limit=rate_limit,
+            rate_period=rate_period,
+            agent_task_group_id=group_uuid,
+        )
+
+    async def _get_wave_results(
+        self,
+        group_id: uuid.UUID,
+    ) -> list[AgentTask]:
+        return await self._get_agent_wave_results(group_id=group_id)
 
     async def _add_agent_tasks(
         self,
         tasks: list[dict[str, Any]],
     ) -> list[AgentTask]:
-        """Add agent tasks to the database for later execution.
-
-        Args:
-            tasks: List of dicts with task fields. Each dict should contain:
-                - model (AgentModels): Agent model enum
-                - task_prompt (str): The task to perform
-                - system_prompt (Optional[str]): System prompt
-                - effort (Optional[str]): Reasoning effort level
-                - allowed_tools (Optional[List[str]]): List of tool names
-                - max_turns (Optional[int]): Maximum conversation turns
-                - working_directory (Optional[str]): Working directory for tools
-                - attachments (Optional[List[str]]): List of agent_file_ids
-                - enable_custom_tools (bool): Enable MCP custom tools
-                - mcp_server_config (Optional[dict]): MCP server configuration
-                - output_format (Optional[dict|Type[pydantic.BaseModel]]): Structured output format
-                - agent_task_group_id (Optional[uuid.UUID]): Reference to group
-                - agent_task_extra_id (Optional[uuid.UUID]): Reference to extra
-
-        Returns:
-            List of created AgentTask entries.
-        """
+        """Insert agent task rows for later execution."""
         created_tasks = []
 
         async with self.session_factory() as session:
@@ -226,18 +195,7 @@ class AgentTasksDBMixin:
         data_object_version: str,
         data_object_format: str,
     ) -> AgentFile:
-        """Add a file to the agent_files table.
-
-        Args:
-            file_path: Path to the file.
-            data_object_class_name: Name of the data object class.
-            data_object_id: ID of the data object.
-            data_object_version: Version of the data object.
-            data_object_format: Format of the data object.
-
-        Returns:
-            Created AgentFile entry.
-        """
+        """Insert a file row into the agent_files table."""
         with open(file_path, "rb") as f:
             file_data = f.read()
             md5sum = hashlib.md5(file_data).hexdigest()
@@ -274,20 +232,7 @@ class AgentTasksDBMixin:
         agent_task_id: uuid.UUID,
         tool_calls: list[dict[str, Any]],
     ) -> list[AgentToolCall]:
-        """Store tool call records in database.
-
-        Args:
-            agent_task_id: ID of the parent agent task.
-            tool_calls: List of tool call dicts with:
-                - turn_number (int)
-                - tool_name (str)
-                - tool_input (str): JSON string
-                - tool_output (Optional[str]): JSON or text
-                - is_error (bool)
-
-        Returns:
-            List of created AgentToolCall entries.
-        """
+        """Store tool call records for a task."""
         created_tool_calls = []
 
         async with self.session_factory() as session:
@@ -315,18 +260,7 @@ class AgentTasksDBMixin:
         agent_task_id: uuid.UUID,
         messages: list[dict[str, Any]],
     ) -> list[AgentMessage]:
-        """Store conversation messages in database.
-
-        Args:
-            agent_task_id: ID of the parent agent task.
-            messages: List of message dicts with:
-                - turn_number (int)
-                - role (str): "assistant", "user", "system"
-                - content (str): JSON string or plain text
-
-        Returns:
-            List of created AgentMessage entries.
-        """
+        """Store conversation messages for a task."""
         created_messages = []
 
         async with self.session_factory() as session:
@@ -347,18 +281,32 @@ class AgentTasksDBMixin:
 
         return created_messages
 
+    @staticmethod
+    def _validate_structured_output(
+        task: AgentTask, final_response: str | None
+    ) -> tuple[bool, str | None]:
+        """Return (is_error, error_message) for a completed task's response.
+
+        When ``task.output_format`` is set, the response must be valid JSON.
+        Plain-text responses (e.g. provider rate-limit banners returned as
+        ``message.result``) bypass exception handling and would otherwise be
+        recorded as successful; this check surfaces them so ``retry()`` runs.
+        """
+        if not task.output_format:
+            return False, None
+        if not final_response:
+            return True, "No response produced for task requiring structured output"
+        try:
+            json.loads(final_response)
+        except (json.JSONDecodeError, ValueError) as ve:
+            return True, f"Response is not valid JSON for required structured output: {ve}"
+        return False, None
+
     async def _execute_single_agent_task(
         self,
         task: AgentTask,
     ) -> AgentTask:
-        """Execute a single agent task using the appropriate SDK.
-
-        Args:
-            task: AgentTask to execute.
-
-        Returns:
-            Updated AgentTask with results.
-        """
+        """Dispatch an agent task to the correct provider SDK."""
         provider = task.model.value.provider
 
         if provider == AgentProviders.OPENAI:
@@ -372,14 +320,7 @@ class AgentTasksDBMixin:
         self,
         task: AgentTask,
     ) -> AgentTask:
-        """Execute agent task using OpenAI Agents SDK.
-
-        Args:
-            task: AgentTask to execute.
-
-        Returns:
-            Updated AgentTask with results.
-        """
+        """Execute an agent task using the OpenAI Agents SDK."""
         import agents as openai_agents
 
         start_time = datetime.now(UTC)
@@ -395,14 +336,14 @@ class AgentTasksDBMixin:
                 from openai.types.shared import Reasoning
 
                 model_settings = openai_agents.ModelSettings(
-                    reasoning=Reasoning(effort=task.effort),
+                    reasoning=Reasoning(effort=task.effort),  # pyright: ignore[reportArgumentType]
                 )
 
             agent = openai_agents.Agent(
                 name="TaskAgent",
                 instructions=task.system_prompt or "",
                 model=task.model.value.api_id,
-                model_settings=model_settings,
+                model_settings=model_settings,  # pyright: ignore[reportArgumentType]
             )
 
             result = await openai_agents.Runner.run(
@@ -423,16 +364,16 @@ class AgentTasksDBMixin:
                     if hasattr(raw, "role"):
                         messages.append({
                             "turn_number": turn_number,
-                            "role": raw.role if hasattr(raw, "role") else "assistant",
-                            "content": json.dumps(raw.model_dump()) if hasattr(raw, "model_dump") else str(raw),
+                            "role": raw.role if hasattr(raw, "role") else "assistant",  # pyright: ignore[reportAttributeAccessIssue]
+                            "content": json.dumps(raw.model_dump()) if hasattr(raw, "model_dump") else str(raw),  # pyright: ignore[reportAttributeAccessIssue]
                         })
 
                 if hasattr(item, "type") and item.type == "tool_call_item":
                     tool_calls.append({
                         "turn_number": turn_number,
-                        "tool_name": item.name if hasattr(item, "name") else "unknown",
-                        "tool_input": json.dumps(item.call_args) if hasattr(item, "call_args") else "{}",
-                        "tool_output": item.output if hasattr(item, "output") else None,
+                        "tool_name": item.name if hasattr(item, "name") else "unknown",  # pyright: ignore[reportAttributeAccessIssue]
+                        "tool_input": json.dumps(item.call_args) if hasattr(item, "call_args") else "{}",  # pyright: ignore[reportAttributeAccessIssue]
+                        "tool_output": item.output if hasattr(item, "output") else None,  # pyright: ignore[reportAttributeAccessIssue]
                         "is_error": False,
                     })
 
@@ -441,12 +382,16 @@ class AgentTasksDBMixin:
             await self._store_tool_calls(task.agent_task_id, tool_calls)
             await self._store_messages(task.agent_task_id, messages)
 
+            final_response = result.final_output
+            is_error, error_message = self._validate_structured_output(task, final_response)
+
             async with self.session_factory() as session:
-                task.final_response = result.final_output
+                task.final_response = final_response
                 task.completed_at_utc = end_time
                 task.duration_ms = duration_ms
                 task.num_turns = len(result.new_items)
-                task.is_error = False
+                task.is_error = is_error
+                task.error_message = error_message
                 session.add(task)
                 await session.commit()
                 await session.refresh(task)
@@ -472,14 +417,7 @@ class AgentTasksDBMixin:
         self,
         task: AgentTask,
     ) -> AgentTask:
-        """Execute agent task using Anthropic Claude Agent SDK.
-
-        Args:
-            task: AgentTask to execute.
-
-        Returns:
-            Updated AgentTask with results.
-        """
+        """Execute an agent task using the Anthropic Claude Agent SDK."""
         import claude_agent_sdk as claude_sdk
 
         start_time = datetime.now(UTC)
@@ -501,12 +439,12 @@ class AgentTasksDBMixin:
             options = claude_sdk.ClaudeAgentOptions(
                 model=task.model.value.api_id,
                 system_prompt=task.system_prompt,
-                allowed_tools=allowed_tools,
+                allowed_tools=allowed_tools,  # pyright: ignore[reportArgumentType]
                 cwd=task.working_directory,
                 max_turns=task.max_turns,
                 permission_mode="acceptEdits",
-                output_format=output_format,
-                effort=task.effort,
+                output_format=output_format,  # pyright: ignore[reportCallIssue]
+                effort=task.effort,  # pyright: ignore[reportCallIssue, reportArgumentType]
             )
 
             tool_calls = []
@@ -521,12 +459,12 @@ class AgentTasksDBMixin:
 
                 async for message in client.receive_response():
                     if hasattr(message, "content"):
-                        for block in message.content:
+                        for block in message.content:  # pyright: ignore[reportAttributeAccessIssue]
                             if hasattr(block, "name") and hasattr(block, "input"):
                                 tool_calls.append({
                                     "turn_number": turn_number,
-                                    "tool_name": block.name,
-                                    "tool_input": json.dumps(block.input),
+                                    "tool_name": block.name,  # pyright: ignore[reportAttributeAccessIssue]
+                                    "tool_input": json.dumps(block.input),  # pyright: ignore[reportAttributeAccessIssue]
                                     "tool_output": None,
                                     "is_error": False,
                                 })
@@ -534,20 +472,20 @@ class AgentTasksDBMixin:
                                 messages.append({
                                     "turn_number": turn_number,
                                     "role": "assistant",
-                                    "content": block.text,
+                                    "content": block.text,  # pyright: ignore[reportAttributeAccessIssue]
                                 })
 
                     if hasattr(message, "role"):
                         turn_number += 1
 
-                    if hasattr(message, "structured_output") and message.structured_output:
-                        final_response = json.dumps(message.structured_output)
-                    elif hasattr(message, "result") and message.result:
-                        final_response = message.result
+                    if hasattr(message, "structured_output") and message.structured_output:  # pyright: ignore[reportAttributeAccessIssue]
+                        final_response = json.dumps(message.structured_output)  # pyright: ignore[reportAttributeAccessIssue]
+                    elif hasattr(message, "result") and message.result:  # pyright: ignore[reportAttributeAccessIssue]
+                        final_response = message.result  # pyright: ignore[reportAttributeAccessIssue]
                     if hasattr(message, "num_turns"):
-                        num_turns = message.num_turns
+                        num_turns = message.num_turns  # pyright: ignore[reportAttributeAccessIssue]
                     if hasattr(message, "total_cost_usd"):
-                        total_cost_usd = message.total_cost_usd
+                        total_cost_usd = message.total_cost_usd  # pyright: ignore[reportAttributeAccessIssue]
 
             await self._store_tool_calls(task.agent_task_id, tool_calls)
             await self._store_messages(task.agent_task_id, messages)
@@ -555,13 +493,16 @@ class AgentTasksDBMixin:
             end_time = datetime.now(UTC)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
+            is_error, error_message = self._validate_structured_output(task, final_response)
+
             async with self.session_factory() as session:
                 task.final_response = final_response
                 task.completed_at_utc = end_time
                 task.duration_ms = duration_ms
                 task.num_turns = num_turns
                 task.total_cost_usd = total_cost_usd
-                task.is_error = False
+                task.is_error = is_error
+                task.error_message = error_message
                 session.add(task)
                 await session.commit()
                 await session.refresh(task)
@@ -589,24 +530,11 @@ class AgentTasksDBMixin:
         rate_period: float = 1.0,
         agent_task_group_id: uuid.UUID | None = None,
     ) -> list[AgentTask]:
-        """Execute all agent tasks where started_at_utc is null.
-
-        Args:
-            rate_limit: Maximum number of tasks per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            agent_task_group_id: If provided, only process tasks from this group.
-
-        Returns:
-            List of executed AgentTask entries with results populated.
-        """
+        """Execute all agent tasks where ``started_at_utc`` is null."""
         from sqlmodel import select
 
-        from p40_flowbase.helpers.rate_limit import create_limiter
-
-        limiter = create_limiter(rate_limit, rate_period)
-
         async with self.session_factory() as session:
-            statement = select(AgentTask).where(AgentTask.started_at_utc.is_(None))
+            statement = select(AgentTask).where(AgentTask.started_at_utc.is_(None))  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             if agent_task_group_id is not None:
                 statement = statement.where(
                     AgentTask.agent_task_group_id == agent_task_group_id
@@ -614,52 +542,15 @@ class AgentTasksDBMixin:
             result = await session.exec(statement)
             agent_tasks = result.all()
 
-        async def rate_limited_task(task):
-            async with limiter:
-                pass
-            return await self._execute_single_agent_task(task)
-
-        tasks = [rate_limited_task(t) for t in agent_tasks]
-
-        executed = []
-        successful_count = 0
-        failed_count = 0
-        total_count = 0
-        start_time = time.time()
-
-        for completed_task in asyncio.as_completed(tasks):
-            total_count += 1
-            try:
-                result = await completed_task
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Agent task failed with exception: {e}")
-                continue
-            executed.append(result)
-
-            if not result.is_error:
-                successful_count += 1
-            else:
-                failed_count += 1
-
-            if total_count % 10 == 0:
-                elapsed = time.time() - start_time
-                effective_rps = total_count / elapsed if elapsed > 0 else 0
-                logger.info(
-                    f"Progress: {total_count} completed "
-                    f"({successful_count} succeeded, {failed_count} failed), "
-                    f"{elapsed:.1f}s elapsed, {effective_rps:.2f} tasks/s"
-                )
-
-        elapsed = time.time() - start_time
-        effective_rps = total_count / elapsed if elapsed > 0 else 0
-        logger.info(
-            f"Completed processing {total_count} agent tasks: "
-            f"{successful_count} succeeded, {failed_count} failed, "
-            f"{elapsed:.1f}s total, {effective_rps:.2f} tasks/s"
+        return await self._run_batch(
+            rows=list(agent_tasks),
+            execute_one=self._execute_single_agent_task,
+            rate_limit=rate_limit,
+            rate_period=rate_period,
+            is_success=lambda r: not r.is_error,
+            progress_every=10,
+            label="agent task",
         )
-
-        return executed
 
     async def _retry_failed_agent_tasks(
         self,
@@ -669,24 +560,17 @@ class AgentTasksDBMixin:
     ) -> list[AgentTask]:
         """Retry agent tasks that failed.
 
-        Creates new AgentTask entries for each failed task and executes them.
-
-        Args:
-            rate_limit: Maximum number of tasks per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            agent_task_group_id: If provided, only process tasks from this group.
-
-        Returns:
-            List of new AgentTask entries created for retries.
+        Creates fresh ``AgentTask`` rows for each failed task (marking the
+        originals as superseded) and executes them in a second pass.
         """
         import sqlalchemy
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(AgentTask).where(
-                AgentTask.started_at_utc.is_not(None),
+                AgentTask.started_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
                 AgentTask.is_error == True,
-                AgentTask.superseded_by_id.is_(None),
+                AgentTask.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if agent_task_group_id is not None:
                 statement = statement.where(
@@ -736,7 +620,7 @@ class AgentTasksDBMixin:
                 await session.execute(
                     sqlalchemy.update(AgentTask)
                     .where(
-                        AgentTask.agent_task_id == failed_task.agent_task_id
+                        AgentTask.agent_task_id == failed_task.agent_task_id  # pyright: ignore[reportArgumentType]
                     )
                     .values(superseded_by_id=new_task.agent_task_id)
                 )
@@ -752,154 +636,13 @@ class AgentTasksDBMixin:
         self,
         group_id: uuid.UUID,
     ) -> list[AgentTask]:
-        """Get non-superseded agent tasks for a group.
-
-        Args:
-            group_id: The task group UUID.
-
-        Returns:
-            List of AgentTask entries that have not been superseded.
-        """
+        """Return non-superseded agent tasks for ``group_id``."""
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(AgentTask).where(
                 AgentTask.agent_task_group_id == group_id,
-                AgentTask.superseded_by_id.is_(None),
+                AgentTask.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             result = await session.exec(statement)
-            return result.all()
-
-    async def _execute_agent_task_graph(
-        self,
-        lanes: list[str],
-        num_steps: int,
-        populate_step: Callable,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-        max_retries: int = 1,
-        checkpointer: Any | None = None,
-        thread_id: str | None = None,
-    ) -> dict[str, list[list]]:
-        """Execute a parallel-lane, sequential-step graph for agent tasks.
-
-        Args:
-            lanes: List of lane identifiers.
-            num_steps: Number of sequential steps per lane.
-            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
-            rate_limit: Maximum tasks per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            max_retries: Maximum retry attempts per step.
-            checkpointer: Optional LangGraph checkpointer.
-            thread_id: Thread ID for checkpointer resumability.
-
-        Returns:
-            Dict mapping lane_id to list of step results (each a list of AgentTask).
-        """
-        from p40_flowbase.orchestration.graphs import (
-            build_recursive_task_graph,
-        )
-
-        effective_rate_limit = rate_limit if rate_limit is not None else self.default_rate_limit
-        effective_rate_period = rate_period if rate_period is not None else self.default_rate_period
-
-        async def execute_pending_wrapper(group_id_str: str) -> list:
-            group_uuid = (
-                uuid.UUID(group_id_str)
-                if isinstance(group_id_str, str)
-                else group_id_str
-            )
-            return await self._execute_pending_agent_tasks(
-                rate_limit=effective_rate_limit,
-                rate_period=effective_rate_period,
-                agent_task_group_id=group_uuid,
-            )
-
-        async def retry_failed_wrapper(group_id_str: str) -> list:
-            group_uuid = (
-                uuid.UUID(group_id_str)
-                if isinstance(group_id_str, str)
-                else group_id_str
-            )
-            return await self._retry_failed_agent_tasks(
-                rate_limit=effective_rate_limit,
-                rate_period=effective_rate_period,
-                agent_task_group_id=group_uuid,
-            )
-
-        async def get_wave_results_wrapper(group_id: uuid.UUID) -> list:
-            return await self._get_agent_wave_results(group_id=group_id)
-
-        graph = build_recursive_task_graph(
-            populate_step=populate_step,
-            execute_pending=execute_pending_wrapper,
-            retry_failed=retry_failed_wrapper,
-            get_wave_results=get_wave_results_wrapper,
-            checkpointer=checkpointer,
-        )
-
-        config = {}
-        if thread_id is not None or checkpointer is not None:
-            config["configurable"] = {
-                "thread_id": thread_id or uuid.uuid4().hex,
-            }
-
-        result = await graph.ainvoke(
-            {
-                "lanes": lanes,
-                "num_steps": num_steps,
-                "max_retries": max_retries,
-                "lane_results": [],
-            },
-            config=config if config else None,
-        )
-
-        return result.get("organized_results", {})
-
-    async def execute_graph(
-        self,
-        lanes: list[str],
-        num_steps: int,
-        populate_step: Callable | None = None,
-        rate_limit: float | None = None,
-        rate_period: float | None = None,
-        max_retries: int = 1,
-        checkpointer: Any | None = None,
-        thread_id: str | None = None,
-    ) -> dict[str, list[list]]:
-        """Execute a parallel-lane, sequential-step graph for agent tasks.
-
-        Convenience method that defaults populate_step to self._populate_lane_step.
-
-        Args:
-            lanes: List of lane identifiers.
-            num_steps: Number of sequential steps per lane.
-            populate_step: Async callback ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
-                Defaults to self._populate_lane_step if not provided.
-            rate_limit: Maximum tasks per rate_period.
-            rate_period: Time period in seconds for rate limiting.
-            max_retries: Maximum retry attempts per step.
-            checkpointer: Optional LangGraph checkpointer.
-            thread_id: Thread ID for checkpointer resumability.
-
-        Returns:
-            Dict mapping lane_id to list of step results (each a list of AgentTask).
-        """
-        if populate_step is None:
-            if not hasattr(self, "_populate_lane_step"):
-                raise NotImplementedError(
-                    f"{self.__class__.__name__} must implement _populate_lane_step() "
-                    "or pass populate_step argument"
-                )
-            populate_step = self._populate_lane_step
-
-        return await self._execute_agent_task_graph(
-            lanes=lanes,
-            num_steps=num_steps,
-            populate_step=populate_step,
-            rate_limit=rate_limit,
-            rate_period=rate_period,
-            max_retries=max_retries,
-            checkpointer=checkpointer,
-            thread_id=thread_id,
-        )
+            return list(result.all())

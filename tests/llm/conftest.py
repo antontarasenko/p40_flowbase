@@ -3,13 +3,11 @@ from enum import Enum
 import pytest
 
 from p40_flowbase.core.base import DataObjectVersion
-from p40_flowbase.core.database import DBDataObject
-from p40_flowbase.http.mixin import HTTPRequestsDBMixin
 from p40_flowbase.http.models import (
     HTTPRequest,
     HTTPRequestGroup,
 )
-from p40_flowbase.llm.mixin import LLMRequestsDBMixin
+from p40_flowbase.llm.mixin import LLMDB
 from p40_flowbase.llm.models import (
     LLMRequest,
     LLMRequestGroup,
@@ -24,18 +22,18 @@ class TestVersion(Enum):
     )
 
 
-class TestLLMDB(LLMRequestsDBMixin, HTTPRequestsDBMixin, DBDataObject):
+class TestLLMDB(LLMDB):
     """Minimal DB object for testing LLM retry logic."""
 
     id = "test_llm"
     description = "Test LLM DB"
     supported_versions = (TestVersion.V1,)
-    schema = [HTTPRequestGroup, HTTPRequest, LLMRequestGroup, LLMRequest]
+    tables = [HTTPRequestGroup, HTTPRequest, LLMRequestGroup, LLMRequest]
 
 
 @pytest.fixture
 async def llm_db(test_local_data):
     db = TestLLMDB(TestVersion.V1)
-    await db.make_async(replace=True)
+    await db.create_tables(replace=True)
     yield db
     await db.close()

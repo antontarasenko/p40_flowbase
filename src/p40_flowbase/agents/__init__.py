@@ -4,7 +4,7 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
-from p40_flowbase.agents.mixin import AgentTasksDBMixin
+from p40_flowbase.agents.mixin import AgentDB
 from p40_flowbase.agents.models import (
     AgentFile,
     AgentMessage,
@@ -20,6 +20,7 @@ from p40_flowbase.agents.providers import (
 )
 
 __all__ = [
+    "AgentDB",
     "AgentFile",
     "AgentMessage",
     "AgentModelVersion",
@@ -28,6 +29,5 @@ __all__ = [
     "AgentTask",
     "AgentTaskExtra",
     "AgentTaskGroup",
-    "AgentTasksDBMixin",
     "AgentToolCall",
 ]

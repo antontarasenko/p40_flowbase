@@ -4,10 +4,10 @@ from p40_flowbase.core.base import (
     DataObject,
     DataObjectVersion,
 )
-from p40_flowbase.core.composite import CompositeDataObject
-from p40_flowbase.core.database import DBDataObject
-from p40_flowbase.core.document import DocumentDataObject
-from p40_flowbase.core.figure import FigureDataObject
+from p40_flowbase.core.composite import Composite
+from p40_flowbase.core.database import DB
+from p40_flowbase.core.document import Document
+from p40_flowbase.core.figure import Figure
 from p40_flowbase.core.formats import (
     CompositeFormat,
     DBFormat,
@@ -16,20 +16,32 @@ from p40_flowbase.core.formats import (
     ModelFormat,
     TableFormat,
 )
-from p40_flowbase.core.model import ModelDataObject
-from p40_flowbase.core.table import TableDataObject
+from p40_flowbase.core.model import Model
+from p40_flowbase.core.table import (
+    Table,
+    TableFromDB,
+)
+from p40_flowbase.core.tables import (
+    make_agent_task_extra_table,
+    make_agent_task_group_table,
+    make_http_request_extra_table,
+    make_http_request_group_table,
+    make_llm_request_extra_table,
+    make_llm_request_group_table,
+)
 
 __all__ = [
     # Base
     "DataObject",
     "DataObjectVersion",
     # Data object types
-    "CompositeDataObject",
-    "DBDataObject",
-    "DocumentDataObject",
-    "FigureDataObject",
-    "ModelDataObject",
-    "TableDataObject",
+    "Composite",
+    "DB",
+    "Document",
+    "Figure",
+    "Model",
+    "Table",
+    "TableFromDB",
     # Formats
     "CompositeFormat",
     "DBFormat",
@@ -37,4 +49,11 @@ __all__ = [
     "FigureFormat",
     "ModelFormat",
     "TableFormat",
+    # SQLModel table factories
+    "make_agent_task_extra_table",
+    "make_agent_task_group_table",
+    "make_http_request_extra_table",
+    "make_http_request_group_table",
+    "make_llm_request_extra_table",
+    "make_llm_request_group_table",
 ]
