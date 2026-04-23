@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.4.0 (2026-04-23)
+
 - Migrate package to Dagster
 
 ## 0.3.1 (2026-04-18)
