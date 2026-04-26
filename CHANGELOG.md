@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- devel: Tighten tooling config (`basedpyright`, `ruff`, `mypy`, `pytest`)
+
 ## 0.4.0 (2026-04-23)
 
 - Migrate package to Dagster
