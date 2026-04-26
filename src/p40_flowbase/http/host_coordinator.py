@@ -38,8 +38,25 @@ import asyncio
 import time
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from p40_flowbase.logging import logger
+
+
+@dataclass(frozen=True, slots=True)
+class CoordinatorState:
+    """Snapshot of a ``HostCoordinator``'s internal bookkeeping.
+
+    Stable; intended for tests and diagnostic logging. Do not mutate the
+    coordinator via this snapshot — it is a read-only view captured at the
+    moment ``HostCoordinator.state`` was accessed.
+    """
+
+    unavailable_until: float
+    outage_start: float
+    backoff_step: int
+    backoff_epoch: int
+    last_request_time: float
 
 
 class HostCoordinator:
@@ -82,6 +99,17 @@ class HostCoordinator:
 
         self._availability_lock: asyncio.Lock = asyncio.Lock()
         self._request_lock: asyncio.Lock = asyncio.Lock()
+
+    @property
+    def state(self) -> CoordinatorState:
+        """Snapshot of internal state for tests and diagnostics."""
+        return CoordinatorState(
+            unavailable_until=self._unavailable_until,
+            outage_start=self._outage_start,
+            backoff_step=self._backoff_step,
+            backoff_epoch=self._backoff_epoch,
+            last_request_time=self._last_request_time,
+        )
 
     @property
     def backoff_epoch(self) -> int:

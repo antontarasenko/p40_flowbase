@@ -31,25 +31,21 @@ from p40_flowbase.core.tables import (
 )
 
 __all__ = [
-    # Base
-    "DataObject",
-    "DataObjectVersion",
-    # Data object types
-    "Composite",
     "DB",
-    "Document",
-    "Figure",
-    "Model",
-    "Table",
-    "TableFromDB",
-    # Formats
+    "Composite",
     "CompositeFormat",
     "DBFormat",
+    "DataObject",
+    "DataObjectVersion",
+    "Document",
     "DocumentFormat",
+    "Figure",
     "FigureFormat",
+    "Model",
     "ModelFormat",
+    "Table",
     "TableFormat",
-    # SQLModel table factories
+    "TableFromDB",
     "make_agent_task_extra_table",
     "make_agent_task_group_table",
     "make_http_request_extra_table",

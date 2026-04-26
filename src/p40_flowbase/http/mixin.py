@@ -12,12 +12,19 @@ from datetime import (
     datetime,
 )
 from typing import (
+    TYPE_CHECKING,
     Any,
+    ClassVar,
+    override,
 )
 
 from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.http.models import HTTPRequest
 from p40_flowbase.logging import logger
+
+if TYPE_CHECKING:
+    from aiohttp import ClientSession
+    from sqlalchemy.sql.elements import ColumnElement
 
 
 class HTTPDB(RequestsDBMixin[HTTPRequest]):
@@ -29,29 +36,33 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
     rows.
     """
 
-    rate_limit: float = 5.0
-    rate_period: float = 1.0
+    rate_limit: ClassVar[float] = 5.0
+    rate_period: ClassVar[float] = 1.0
 
-    _request_model = HTTPRequest
-    _pending_column = "requested_at_utc"
+    _request_model: ClassVar[type[Any] | None] = HTTPRequest
+    _pending_column: ClassVar[str | None] = "requested_at_utc"
 
     @classmethod
-    def _failed_predicate(cls):  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    def _failed_predicate(cls) -> "ColumnElement[bool] | None":
         from sqlalchemy import and_
 
         return and_(
-            HTTPRequest.response_status != 200,  # pyright: ignore[reportArgumentType]
-            HTTPRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            HTTPRequest.response_status != 200,  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+            HTTPRequest.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
         )
 
+    @override
     async def _populate(self) -> uuid.UUID:
         if not hasattr(self, "_populate_http_requests"):
             raise NotImplementedError(
                 f"{self.__class__.__name__} must implement "
                 "_populate_http_requests() method"
             )
-        return await self._populate_http_requests()  # pyright: ignore[reportAttributeAccessIssue]
+        result: uuid.UUID = await self._populate_http_requests()  # pyright: ignore[reportAttributeAccessIssue]
+        return result
 
+    @override
     async def _execute_pending(
         self,
         group_id: uuid.UUID | str | None = None,
@@ -64,6 +75,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
             http_request_group_id=str(group_id) if group_id else None,
         )
 
+    @override
     async def _retry_failed(
         self,
         group_id: uuid.UUID | str | None = None,
@@ -76,6 +88,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
             http_request_group_id=str(group_id) if group_id else None,
         )
 
+    @override
     async def _get_wave_results(
         self,
         group_id: uuid.UUID,
@@ -111,7 +124,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
 
     async def _execute_http_request(
         self,
-        http_client,
+        http_client: "ClientSession",
         request_method: str,
         request_url: str,
         request_headers: str | None,
@@ -122,9 +135,9 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
         requested_at_utc = datetime.now(UTC)
         start_time = time.monotonic()
 
-        request_options = {}
+        request_options: dict[str, Any] = {}
 
-        headers = {}
+        headers: dict[str, str] = {}
         if request_headers:
             headers.update(json.loads(request_headers))
         if ephemeral_headers:
@@ -158,21 +171,17 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
         rate_period: float = 1.0,
         ephemeral_headers: dict[str, str] | None = None,
         http_request_group_id: str | None = None,
-    ):
+    ) -> list[HTTPRequest]:
         """Execute all HTTP requests where ``requested_at_utc`` is null."""
         import aiohttp
         from sqlmodel import select
 
         async with self.session_factory() as session:
             statement = select(HTTPRequest).where(
-                HTTPRequest.requested_at_utc.is_(None)  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                HTTPRequest.requested_at_utc.is_(None)  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if http_request_group_id is not None:
-                group_uuid = (
-                    uuid.UUID(http_request_group_id)
-                    if isinstance(http_request_group_id, str)
-                    else http_request_group_id
-                )
+                group_uuid = uuid.UUID(http_request_group_id)
                 statement = statement.where(
                     HTTPRequest.http_request_group_id == group_uuid
                 )
@@ -198,7 +207,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
 
     async def _process_single_http_request(
         self,
-        http_client,
+        http_client: "ClientSession",
         row: HTTPRequest,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> HTTPRequest:
@@ -232,7 +241,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
 
     async def _retry_single_http_request(
         self,
-        http_client,
+        http_client: "ClientSession",
         row: HTTPRequest,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> HTTPRequest:
@@ -270,7 +279,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
         rate_period: float = 1.0,
         ephemeral_headers: dict[str, str] | None = None,
         http_request_group_id: str | None = None,
-    ):
+    ) -> list[HTTPRequest]:
         """Retry all HTTP requests with response_status != 200."""
         import aiohttp
         import sqlalchemy
@@ -282,15 +291,11 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
 
         async with self.session_factory() as session:
             statement = select(HTTPRequest).where(
-                HTTPRequest.response_status != 200,
-                HTTPRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                HTTPRequest.response_status != 200,  # pyright: ignore[reportArgumentType]
+                HTTPRequest.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if http_request_group_id is not None:
-                group_uuid = (
-                    uuid.UUID(http_request_group_id)
-                    if isinstance(http_request_group_id, str)
-                    else http_request_group_id
-                )
+                group_uuid = uuid.UUID(http_request_group_id)
                 statement = statement.where(
                     HTTPRequest.http_request_group_id == group_uuid
                 )
@@ -307,10 +312,10 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
                             ephemeral_headers,
                         )
                     async with self.session_factory() as session:
-                        await session.execute(
+                        await session.exec(
                             sqlalchemy.update(HTTPRequest)
                             .where(
-                                HTTPRequest.http_request_id
+                                HTTPRequest.http_request_id  # type: ignore[arg-type]
                                 == row.http_request_id  # pyright: ignore[reportArgumentType]
                             )
                             .values(
@@ -318,7 +323,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
                             )
                         )
                         await session.commit()
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001  # log per-request retry failure; keep batch going
                     logger.error(
                         f"HTTP retry failed for request {row.http_request_id}: {e}"
                     )
@@ -336,7 +341,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
         async with self.session_factory() as session:
             statement = select(HTTPRequest).where(
                 HTTPRequest.http_request_group_id == group_id,
-                HTTPRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                HTTPRequest.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             result = await session.exec(statement)
             return list(result.all())

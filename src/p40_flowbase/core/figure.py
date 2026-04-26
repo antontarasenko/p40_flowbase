@@ -5,8 +5,10 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import pickle
+from enum import Enum
+from typing import ClassVar
 
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure as MplFigure
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import FigureFormat
@@ -24,19 +26,20 @@ class Figure(DataObject):
         - SVG: SVG vector graphics
     """
 
-    make_format: FigureFormat = FigureFormat.PKL  # pyright: ignore[reportIncompatibleVariableOverride]
+    make_format: ClassVar[FigureFormat] = FigureFormat.PKL  # pyright: ignore[reportIncompatibleVariableOverride]
 
-    def __init__(self, version):
+    def __init__(self, version: Enum) -> None:
         super().__init__(version)
-        self._mplf: plt.Figure | None = None  # pyright: ignore[reportPrivateImportUsage]
+        self._mplf: MplFigure | None = None
 
     @property
-    def mplf(self) -> plt.Figure:  # pyright: ignore[reportPrivateImportUsage]
+    def mplf(self) -> MplFigure:
         """Return the matplotlib figure (lazy loading)."""
         if self._mplf is None:
             with open(self.path_to_format(FigureFormat.PKL), "rb") as f:
-                self._mplf = pickle.load(f)
-        return self._mplf  # pyright: ignore[reportReturnType]
+                loaded: MplFigure = pickle.load(f)  # noqa: S301  # internal cache file we wrote ourselves
+            self._mplf = loaded
+        return self._mplf
 
     def _convert_to_pdf(self) -> None:
         """Convert pkl to pdf."""

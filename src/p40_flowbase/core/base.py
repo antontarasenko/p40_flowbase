@@ -29,11 +29,13 @@ from abc import (
     ABC,
     abstractmethod,
 )
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import (
     Enum,
     StrEnum,
 )
+from typing import ClassVar
 
 from p40_flowbase.logging import logger
 
@@ -74,14 +76,14 @@ class DataObject(ABC):
                 df.to_parquet(self.path_to_format(TableFormat.PARQUET))
     """
 
-    id: str
-    description: str
+    id: ClassVar[str]
+    description: ClassVar[str]
+    make_format: ClassVar[StrEnum]
+    supported_versions: ClassVar[tuple[Enum, ...]] = ()
     version: Enum
-    make_format: StrEnum
-    supported_versions: tuple = ()
 
     # Must be set by project config
-    _local_data: str | None = None
+    _local_data: ClassVar[str | None] = None
 
     def __init__(self, version: Enum):
         """Initialize a data object with a specific version.
@@ -167,7 +169,7 @@ class DataObject(ABC):
                 format_path.unlink()
             logger.info(f"Deleted format '{fmt.value}' for {self.object_stem}")
 
-    def _convert_formats(self, formats_to_create: list[StrEnum]) -> None:
+    def _convert_formats(self, formats_to_create: Sequence[StrEnum]) -> None:
         """Convert default format to other requested formats.
 
         Args:
@@ -193,7 +195,6 @@ class DataObject(ABC):
 
         Must be implemented by subclasses to create the actual data.
         """
-        pass
 
     async def _amake(self) -> None:
         """Async hook for ``make()``.
@@ -253,13 +254,8 @@ class DataObject(ABC):
         if fmt is None:
             formats_to_create = [f for f in format_class if f != self.make_format]
         else:
-            if not isinstance(fmt, StrEnum):
-                raise ValueError(
-                    f"Format must be a StrEnum type. "
-                    f"Supported formats: {list(format_class)}"
-                )
             if not isinstance(fmt, format_class):
-                raise ValueError(
+                raise TypeError(
                     f"Format '{fmt}' not supported. Supported formats: {list(format_class)}"
                 )
             if fmt == self.make_format:
@@ -273,7 +269,7 @@ class DataObject(ABC):
                     f"Format '{fmt_enum.value}' already exists for {self.object_stem}. "
                     f"Use replace=True to overwrite."
                 )
-            elif format_path.exists() and replace:
+            if format_path.exists() and replace:
                 self._delete_format(fmt_enum)
 
         self._convert_formats(formats_to_create)

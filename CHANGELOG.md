@@ -3,6 +3,7 @@
 ## Branch `main`
 
 - devel: Tighten tooling config (`basedpyright`, `ruff`, `mypy`, `pytest`)
+- devel: Fix issues raised by `basedpyright`, `ruff`, `mypy`
 
 ## 0.4.0 (2026-04-23)
 

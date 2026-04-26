@@ -4,6 +4,7 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
+import asyncio
 import json
 import pathlib
 import uuid
@@ -12,7 +13,10 @@ from datetime import (
     datetime,
 )
 from typing import (
+    TYPE_CHECKING,
     Any,
+    ClassVar,
+    override,
 )
 
 import pydantic as pyd
@@ -33,12 +37,16 @@ from p40_flowbase.llm.providers import (
 )
 from p40_flowbase.logging import logger
 
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
 
-def _ensure_additional_properties_false(schema: dict[str, Any]) -> dict[str, Any]:
+
+def _ensure_additional_properties_false(schema: Any) -> Any:
     """Recursively set additionalProperties=false on every object-type schema.
 
     Required by providers like Anthropic and OpenAI (strict mode) for
-    structured output schemas.
+    structured output schemas. Accepts ``Any`` because schemas may contain
+    nested non-dict values (lists, primitives) reached via recursion.
     """
     if not isinstance(schema, dict):
         return schema
@@ -76,25 +84,26 @@ class LLMDB(HTTPDB):
     Configure API keys via ``LLMDB.set_api_keys(...)`` before execution.
     """
 
-    rate_limit: float = 1.0
-    rate_period: float = 1.0
+    rate_limit: ClassVar[float] = 1.0
+    rate_period: ClassVar[float] = 1.0
 
-    _request_model = LLMRequest
-    _pending_column = "requested_at_utc"
+    _request_model: ClassVar[type[Any] | None] = LLMRequest
+    _pending_column: ClassVar[str | None] = "requested_at_utc"
 
     @classmethod
-    def _failed_predicate(cls):  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    def _failed_predicate(cls) -> "ColumnElement[bool] | None":
         from sqlalchemy import and_
 
         return and_(
-            LLMRequest.requested_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
-            LLMRequest.response_text.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
-            LLMRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            LLMRequest.requested_at_utc.is_not(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            LLMRequest.response_text.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            LLMRequest.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
         )
 
-    _anthropic_api_key: str | None = None
-    _google_api_key: str | None = None
-    _openai_api_key: str | None = None
+    _anthropic_api_key: ClassVar[str | None] = None
+    _google_api_key: ClassVar[str | None] = None
+    _openai_api_key: ClassVar[str | None] = None
 
     @classmethod
     def set_api_keys(
@@ -108,15 +117,18 @@ class LLMDB(HTTPDB):
         cls._google_api_key = google_api_key
         cls._openai_api_key = openai_api_key
 
+    @override
     async def _populate(self) -> uuid.UUID:
         if not hasattr(self, "_populate_llm_requests"):
             raise NotImplementedError(
                 f"{self.__class__.__name__} must implement "
                 "_populate_llm_requests() method"
             )
-        return await self._populate_llm_requests()  # pyright: ignore[reportAttributeAccessIssue]
+        result: uuid.UUID = await self._populate_llm_requests()  # pyright: ignore[reportAttributeAccessIssue]
+        return result
 
-    async def _execute_pending(  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    async def _execute_pending(  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         group_id: uuid.UUID | str | None = None,
         rate_limit: float = 1.0,
@@ -128,7 +140,8 @@ class LLMDB(HTTPDB):
             llm_request_group_id=str(group_id) if group_id else None,
         )
 
-    async def _retry_failed(  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    async def _retry_failed(  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         group_id: uuid.UUID | str | None = None,
         rate_limit: float = 1.0,
@@ -140,7 +153,8 @@ class LLMDB(HTTPDB):
             llm_request_group_id=str(group_id) if group_id else None,
         )
 
-    async def _get_wave_results(  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    async def _get_wave_results(  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         group_id: uuid.UUID,
     ) -> list[LLMRequest]:
@@ -149,7 +163,8 @@ class LLMDB(HTTPDB):
     def _model_to_json_schema(self, model_class: type[pyd.BaseModel]) -> dict[str, Any]:
         """Convert Pydantic or SQLModel model to a strict-mode JSON schema."""
         schema = model_class.model_json_schema()
-        return _ensure_additional_properties_false(schema)
+        result: dict[str, Any] = _ensure_additional_properties_false(schema)
+        return result
 
     def _get_llm_model(self, model_id: str) -> LLMModelVersion:
         """Return LLM model metadata by id."""
@@ -187,7 +202,7 @@ class LLMDB(HTTPDB):
         if user_prompt:
             content.append({"type": "text", "text": user_prompt})
 
-        body = {
+        body: dict[str, Any] = {
             "model": model,
             "max_tokens": 8192,
             "messages": [
@@ -222,7 +237,7 @@ class LLMDB(HTTPDB):
         response_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build request body for Google Gemini API."""
-        parts = []
+        parts: list[dict[str, Any]] = []
 
         for attachment in attachments_data:
             parts.append(
@@ -244,7 +259,7 @@ class LLMDB(HTTPDB):
         if system_prompt:
             body["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
-        generation_config = {}
+        generation_config: dict[str, Any] = {}
         if temperature is not None:
             generation_config["temperature"] = temperature
 
@@ -268,7 +283,7 @@ class LLMDB(HTTPDB):
         effort: str | None = None,
     ) -> dict[str, Any]:
         """Build request body for OpenAI API."""
-        messages = []
+        messages: list[dict[str, Any]] = []
 
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -319,7 +334,7 @@ class LLMDB(HTTPDB):
 
     def _parse_anthropic_response(self, response_body_text: str) -> str:
         """Parse response text from Anthropic API response."""
-        data = json.loads(response_body_text)
+        data: dict[str, Any] = json.loads(response_body_text)
         content = data.get("content", [])
         text_parts = [
             block.get("text", "") for block in content if block.get("type") == "text"
@@ -328,7 +343,7 @@ class LLMDB(HTTPDB):
 
     def _parse_google_response(self, response_body_text: str) -> str:
         """Parse response text from Google Gemini API response."""
-        data = json.loads(response_body_text)
+        data: dict[str, Any] = json.loads(response_body_text)
         candidates = data.get("candidates", [])
         if not candidates:
             return ""
@@ -339,12 +354,13 @@ class LLMDB(HTTPDB):
 
     def _parse_openai_response(self, response_body_text: str) -> str:
         """Parse response text from OpenAI API response."""
-        data = json.loads(response_body_text)
+        data: dict[str, Any] = json.loads(response_body_text)
         choices = data.get("choices", [])
         if not choices:
             return ""
         message = choices[0].get("message", {})
-        return message.get("content", "")
+        text: str = message.get("content", "")
+        return text
 
     def _get_media_type(self, filename: str) -> str:
         """Return MIME type from filename extension."""
@@ -431,9 +447,8 @@ class LLMDB(HTTPDB):
         """Insert a file row into the llm_files table."""
         import hashlib
 
-        with open(file_path, "rb") as f:
-            file_data = f.read()
-            md5sum = hashlib.md5(file_data).hexdigest()
+        file_data = await asyncio.to_thread(file_path.read_bytes)
+        md5sum = hashlib.md5(file_data, usedforsecurity=False).hexdigest()
 
         object_stem = f"{data_object_id}-{data_object_version}"
         local_dir = pathlib.Path(self.local_data) / object_stem
@@ -471,7 +486,7 @@ class LLMDB(HTTPDB):
 
         from sqlmodel import select
 
-        attachments_data = []
+        attachments_data: list[dict[str, str]] = []
         if not llm_request.attachments:
             return attachments_data
 
@@ -504,8 +519,7 @@ class LLMDB(HTTPDB):
                 file_path = local_dir / llm_file.local_tmp_path
 
             if file_path.exists():
-                with open(file_path, "rb") as f:
-                    file_data = f.read()
+                file_data = await asyncio.to_thread(file_path.read_bytes)
                 attachments_data.append(
                     {
                         "base64_data": base64.b64encode(file_data).decode(),
@@ -605,10 +619,10 @@ class LLMDB(HTTPDB):
         model: LLMModels,
     ) -> str | None:
         """Parse provider response from the underlying ``HTTPRequest`` row."""
-        if not http_request or not http_request.response_body_text:
+        if not http_request.response_body_text:
             logger.warning(
-                f"LLM request failed: No HTTP request or response body "
-                f"(http_request_id: {http_request.http_request_id if http_request else 'None'})"
+                f"LLM request failed: No response body "
+                f"(http_request_id: {http_request.http_request_id})"
             )
             return None
 
@@ -616,9 +630,9 @@ class LLMDB(HTTPDB):
             provider = model.value.provider
             if provider == LLMProviders.ANTHROPIC:
                 return self._parse_anthropic_response(http_request.response_body_text)
-            elif provider == LLMProviders.GOOGLE:
+            if provider == LLMProviders.GOOGLE:
                 return self._parse_google_response(http_request.response_body_text)
-            elif provider == LLMProviders.OPENAI:
+            if provider == LLMProviders.OPENAI:
                 return self._parse_openai_response(http_request.response_body_text)
         else:
             logger.error(
@@ -631,7 +645,7 @@ class LLMDB(HTTPDB):
 
     async def _process_single_llm_request(
         self,
-        http_client,
+        http_client: Any,
         llm_request: LLMRequest,
         ephemeral_headers: dict[str, str] | None = None,
     ) -> LLMRequest:
@@ -719,13 +733,11 @@ class LLMDB(HTTPDB):
         from sqlmodel import select
 
         async with self.session_factory() as session:
-            statement = select(LLMRequest).where(LLMRequest.requested_at_utc.is_(None))  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            statement = select(LLMRequest).where(
+                LLMRequest.requested_at_utc.is_(None)  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            )
             if llm_request_group_id is not None:
-                group_uuid = (
-                    uuid.UUID(llm_request_group_id)
-                    if isinstance(llm_request_group_id, str)
-                    else llm_request_group_id
-                )
+                group_uuid = uuid.UUID(llm_request_group_id)
                 statement = statement.where(
                     LLMRequest.llm_request_group_id == group_uuid
                 )
@@ -766,16 +778,12 @@ class LLMDB(HTTPDB):
 
         async with self.session_factory() as session:
             statement = select(LLMRequest).where(
-                LLMRequest.requested_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
-                LLMRequest.response_text.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
-                LLMRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                LLMRequest.requested_at_utc.is_not(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                LLMRequest.response_text.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                LLMRequest.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if llm_request_group_id is not None:
-                group_uuid = (
-                    uuid.UUID(llm_request_group_id)
-                    if isinstance(llm_request_group_id, str)
-                    else llm_request_group_id
-                )
+                group_uuid = uuid.UUID(llm_request_group_id)
                 statement = statement.where(
                     LLMRequest.llm_request_group_id == group_uuid
                 )
@@ -806,11 +814,12 @@ class LLMDB(HTTPDB):
         new_requests = await self._add_llm_requests(retry_requests_data)
 
         async with self.session_factory() as session:
-            for failed_request, new_request in zip(failed_requests, new_requests):
-                await session.execute(
+            for failed_request, new_request in zip(failed_requests, new_requests, strict=True):
+                await session.exec(
                     sqlalchemy.update(LLMRequest)
                     .where(
-                        LLMRequest.llm_request_id == failed_request.llm_request_id  # pyright: ignore[reportArgumentType]
+                        LLMRequest.llm_request_id  # type: ignore[arg-type]
+                        == failed_request.llm_request_id  # pyright: ignore[reportArgumentType]
                     )
                     .values(superseded_by_id=new_request.llm_request_id)
                 )
@@ -833,7 +842,7 @@ class LLMDB(HTTPDB):
         async with self.session_factory() as session:
             statement = select(LLMRequest).where(
                 LLMRequest.llm_request_group_id == group_id,
-                LLMRequest.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                LLMRequest.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             result = await session.exec(statement)
             return list(result.all())

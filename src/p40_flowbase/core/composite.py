@@ -5,6 +5,7 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import subprocess
+from typing import ClassVar
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import CompositeFormat
@@ -21,7 +22,7 @@ class Composite(DataObject):
         - TAR_ZST: Tar archive with zstd compression
     """
 
-    make_format: CompositeFormat = CompositeFormat.FILES  # pyright: ignore[reportIncompatibleVariableOverride]
+    make_format: ClassVar[CompositeFormat] = CompositeFormat.FILES  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def _convert_to_zip(self) -> None:
         """Convert files directory to zip."""
@@ -47,7 +48,8 @@ class Composite(DataObject):
             stdin=tar_process.stdout,
         )
         try:
-            tar_process.stdout.close()  # pyright: ignore[reportOptionalMemberAccess]
+            assert tar_process.stdout is not None  # noqa: S101  # stdout=PIPE was passed
+            tar_process.stdout.close()
             zstd_process.communicate()
             tar_process.wait()
         finally:

@@ -10,6 +10,12 @@ import shutil
 import subprocess
 import tempfile
 from abc import abstractmethod
+from enum import Enum
+from typing import (
+    Any,
+    ClassVar,
+    override,
+)
 
 from jinja2 import (
     Environment,
@@ -39,12 +45,12 @@ class Document(DataObject):
     Subclasses must implement _make_data() to populate self.data.
     """
 
-    make_format: DocumentFormat = DocumentFormat.MD  # pyright: ignore[reportIncompatibleVariableOverride]
-    template: str
-    template_package: str = "p40_flowbase.templates"
-    data: dict
+    make_format: ClassVar[DocumentFormat] = DocumentFormat.MD  # pyright: ignore[reportIncompatibleVariableOverride]
+    template: ClassVar[str]
+    template_package: ClassVar[str] = "p40_flowbase.templates"
+    data: dict[str, Any]
 
-    def __init__(self, version):
+    def __init__(self, version: Enum) -> None:
         super().__init__(version)
         self.data = {}
 
@@ -54,7 +60,6 @@ class Document(DataObject):
 
         Must be implemented by subclasses to prepare template data.
         """
-        pass
 
     def _render_template(self) -> pathlib.Path:
         """Render Jinja template with self.data and return path to rendered md."""
@@ -67,7 +72,7 @@ class Document(DataObject):
             template_path = temp_dir / self.template
             template_path.write_text(template_content)
 
-            env = Environment(loader=FileSystemLoader(str(temp_dir)))
+            env = Environment(loader=FileSystemLoader(str(temp_dir)), autoescape=False)  # noqa: S701  # markdown/LaTeX templates, not HTML
             template_obj = env.get_template(self.template)
 
             rendered_md = template_obj.render(**self.data)
@@ -80,6 +85,7 @@ class Document(DataObject):
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise
 
+    @override
     def _make(self) -> None:
         """Create and save the default format (md)."""
         self._make_data()

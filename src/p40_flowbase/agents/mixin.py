@@ -4,6 +4,7 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
+import asyncio
 import hashlib
 import json
 import pathlib
@@ -13,7 +14,10 @@ from datetime import (
     datetime,
 )
 from typing import (
+    TYPE_CHECKING,
     Any,
+    ClassVar,
+    override,
 )
 
 from p40_flowbase.agents.models import (
@@ -28,6 +32,9 @@ from p40_flowbase.agents.providers import (
 from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.logging import logger
 
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
+
 
 class AgentDB(RequestsDBMixin[AgentTask]):
     """DB for executing agent tasks via the OpenAI / Anthropic agent SDKs.
@@ -40,24 +47,25 @@ class AgentDB(RequestsDBMixin[AgentTask]):
     Configure API keys via ``AgentDB.set_api_keys(...)`` before execution.
     """
 
-    rate_limit: float = 1.0
-    rate_period: float = 1.0
+    rate_limit: ClassVar[float] = 1.0
+    rate_period: ClassVar[float] = 1.0
 
-    _request_model = AgentTask
-    _pending_column = "started_at_utc"
+    _request_model: ClassVar[type[Any] | None] = AgentTask
+    _pending_column: ClassVar[str | None] = "started_at_utc"
 
     @classmethod
-    def _failed_predicate(cls):  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    def _failed_predicate(cls) -> "ColumnElement[bool] | None":
         from sqlalchemy import and_
 
         return and_(
-            AgentTask.started_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
-            AgentTask.is_error == True,  # pyright: ignore[reportArgumentType]
-            AgentTask.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            AgentTask.started_at_utc.is_not(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            AgentTask.is_error.is_(True),  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            AgentTask.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
         )
 
-    _openai_api_key: str | None = None
-    _anthropic_api_key: str | None = None
+    _openai_api_key: ClassVar[str | None] = None
+    _anthropic_api_key: ClassVar[str | None] = None
 
     @classmethod
     def set_api_keys(
@@ -69,14 +77,17 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         cls._openai_api_key = openai_api_key
         cls._anthropic_api_key = anthropic_api_key
 
+    @override
     async def _populate(self) -> uuid.UUID:
         if not hasattr(self, "_populate_agent_tasks"):
             raise NotImplementedError(
                 f"{self.__class__.__name__} must implement "
                 "_populate_agent_tasks() method"
             )
-        return await self._populate_agent_tasks()  # pyright: ignore[reportAttributeAccessIssue]
+        result: uuid.UUID = await self._populate_agent_tasks()  # pyright: ignore[reportAttributeAccessIssue]
+        return result
 
+    @override
     async def _execute_pending(
         self,
         group_id: uuid.UUID | str | None = None,
@@ -92,6 +103,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             agent_task_group_id=group_uuid,
         )
 
+    @override
     async def _retry_failed(
         self,
         group_id: uuid.UUID | str | None = None,
@@ -107,6 +119,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             agent_task_group_id=group_uuid,
         )
 
+    @override
     async def _get_wave_results(
         self,
         group_id: uuid.UUID,
@@ -196,9 +209,8 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         data_object_format: str,
     ) -> AgentFile:
         """Insert a file row into the agent_files table."""
-        with open(file_path, "rb") as f:
-            file_data = f.read()
-            md5sum = hashlib.md5(file_data).hexdigest()
+        file_data = await asyncio.to_thread(file_path.read_bytes)
+        md5sum = hashlib.md5(file_data, usedforsecurity=False).hexdigest()
 
         object_stem = f"{data_object_id}-{data_object_version}"
         local_dir = pathlib.Path(self.local_data) / object_stem
@@ -311,10 +323,9 @@ class AgentDB(RequestsDBMixin[AgentTask]):
 
         if provider == AgentProviders.OPENAI:
             return await self._execute_openai_agent(task)
-        elif provider == AgentProviders.ANTHROPIC:
+        if provider == AgentProviders.ANTHROPIC:
             return await self._execute_anthropic_agent(task)
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
+        raise ValueError(f"Unknown provider: {provider}")
 
     async def _execute_openai_agent(
         self,
@@ -331,19 +342,19 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             await session.commit()
 
         try:
-            model_settings = None
+            model_settings: Any = None
             if task.effort is not None:
                 from openai.types.shared import Reasoning
 
                 model_settings = openai_agents.ModelSettings(
-                    reasoning=Reasoning(effort=task.effort),  # pyright: ignore[reportArgumentType]
+                    reasoning=Reasoning(effort=task.effort),  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
                 )
 
             agent = openai_agents.Agent(
                 name="TaskAgent",
                 instructions=task.system_prompt or "",
                 model=task.model.value.api_id,
-                model_settings=model_settings,  # pyright: ignore[reportArgumentType]
+                model_settings=model_settings,
             )
 
             result = await openai_agents.Runner.run(
@@ -358,22 +369,23 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             messages = []
             turn_number = 0
 
-            for item in result.new_items:
+            for raw_item in result.new_items:
+                item: Any = raw_item
                 if hasattr(item, "raw_item"):
-                    raw = item.raw_item
+                    raw: Any = item.raw_item
                     if hasattr(raw, "role"):
                         messages.append({
                             "turn_number": turn_number,
-                            "role": raw.role if hasattr(raw, "role") else "assistant",  # pyright: ignore[reportAttributeAccessIssue]
-                            "content": json.dumps(raw.model_dump()) if hasattr(raw, "model_dump") else str(raw),  # pyright: ignore[reportAttributeAccessIssue]
+                            "role": raw.role if hasattr(raw, "role") else "assistant",
+                            "content": json.dumps(raw.model_dump()) if hasattr(raw, "model_dump") else str(raw),
                         })
 
                 if hasattr(item, "type") and item.type == "tool_call_item":
                     tool_calls.append({
                         "turn_number": turn_number,
-                        "tool_name": item.name if hasattr(item, "name") else "unknown",  # pyright: ignore[reportAttributeAccessIssue]
-                        "tool_input": json.dumps(item.call_args) if hasattr(item, "call_args") else "{}",  # pyright: ignore[reportAttributeAccessIssue]
-                        "tool_output": item.output if hasattr(item, "output") else None,  # pyright: ignore[reportAttributeAccessIssue]
+                        "tool_name": item.name if hasattr(item, "name") else "unknown",
+                        "tool_input": json.dumps(item.call_args) if hasattr(item, "call_args") else "{}",
+                        "tool_output": item.output if hasattr(item, "output") else None,
                         "is_error": False,
                     })
 
@@ -396,7 +408,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                 await session.commit()
                 await session.refresh(task)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # capture any agent failure into the task row
             end_time = datetime.now(UTC)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
@@ -439,12 +451,12 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             options = claude_sdk.ClaudeAgentOptions(
                 model=task.model.value.api_id,
                 system_prompt=task.system_prompt,
-                allowed_tools=allowed_tools,  # pyright: ignore[reportArgumentType]
+                allowed_tools=allowed_tools,  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
                 cwd=task.working_directory,
                 max_turns=task.max_turns,
                 permission_mode="acceptEdits",
                 output_format=output_format,  # pyright: ignore[reportCallIssue]
-                effort=task.effort,  # pyright: ignore[reportCallIssue, reportArgumentType]
+                effort=task.effort,  # type: ignore[arg-type]  # pyright: ignore[reportCallIssue, reportArgumentType]
             )
 
             tool_calls = []
@@ -507,7 +519,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                 await session.commit()
                 await session.refresh(task)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # capture any agent failure into the task row
             end_time = datetime.now(UTC)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
@@ -534,7 +546,9 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         from sqlmodel import select
 
         async with self.session_factory() as session:
-            statement = select(AgentTask).where(AgentTask.started_at_utc.is_(None))  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            statement = select(AgentTask).where(
+                AgentTask.started_at_utc.is_(None)  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+            )
             if agent_task_group_id is not None:
                 statement = statement.where(
                     AgentTask.agent_task_group_id == agent_task_group_id
@@ -568,9 +582,9 @@ class AgentDB(RequestsDBMixin[AgentTask]):
 
         async with self.session_factory() as session:
             statement = select(AgentTask).where(
-                AgentTask.started_at_utc.is_not(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
-                AgentTask.is_error == True,
-                AgentTask.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                AgentTask.started_at_utc.is_not(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                AgentTask.is_error.is_(True),  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                AgentTask.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             if agent_task_group_id is not None:
                 statement = statement.where(
@@ -616,11 +630,12 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         new_tasks = await self._add_agent_tasks(retry_tasks_data)
 
         async with self.session_factory() as session:
-            for failed_task, new_task in zip(failed_tasks, new_tasks):
-                await session.execute(
+            for failed_task, new_task in zip(failed_tasks, new_tasks, strict=True):
+                await session.exec(
                     sqlalchemy.update(AgentTask)
                     .where(
-                        AgentTask.agent_task_id == failed_task.agent_task_id  # pyright: ignore[reportArgumentType]
+                        AgentTask.agent_task_id  # type: ignore[arg-type]
+                        == failed_task.agent_task_id  # pyright: ignore[reportArgumentType]
                     )
                     .values(superseded_by_id=new_task.agent_task_id)
                 )
@@ -642,7 +657,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         async with self.session_factory() as session:
             statement = select(AgentTask).where(
                 AgentTask.agent_task_group_id == group_id,
-                AgentTask.superseded_by_id.is_(None),  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                AgentTask.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
             )
             result = await session.exec(statement)
             return list(result.all())

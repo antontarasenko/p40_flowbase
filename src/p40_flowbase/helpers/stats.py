@@ -24,6 +24,4 @@ def create_summary_stats_table(df: pd.DataFrame) -> pd.DataFrame:
     sample_numeric = df.select_dtypes(include=[np.number])
     stats_df = sample_numeric.describe().T
     stats_df.insert(0, "column_name", stats_df.index)
-    stats_df = stats_df.reset_index(drop=True)
-
-    return stats_df
+    return stats_df.reset_index(drop=True)

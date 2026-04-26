@@ -6,7 +6,6 @@ Copyright (c) 2025 Anton Tarasenko
 
 from typing import (
     Any,
-    Dict,
 )
 
 import matplotlib.pyplot as plt

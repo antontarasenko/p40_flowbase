@@ -33,13 +33,19 @@ from collections.abc import (
     Callable,
 )
 from typing import (
+    TYPE_CHECKING,
     Any,
+    ClassVar,
     Generic,
     TypeVar,
+    override,
 )
 
 from p40_flowbase.core.database import DB
 from p40_flowbase.logging import logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
 
 TRequest = TypeVar("TRequest")
 
@@ -54,17 +60,17 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
     progress loop in ``_run_batch``.
     """
 
-    rate_limit: float = 1.0
-    rate_period: float = 1.0
+    rate_limit: ClassVar[float] = 1.0
+    rate_period: ClassVar[float] = 1.0
 
     # Subclasses set these so ``make()`` can detect work remaining in a
     # prior run (pending attempts, or non-superseded failures) and either
     # resume or skip instead of populating a new batch.
-    _request_model: type | None = None
-    _pending_column: str | None = None
+    _request_model: ClassVar[type[Any] | None] = None
+    _pending_column: ClassVar[str | None] = None
 
     @classmethod
-    def _failed_predicate(cls):
+    def _failed_predicate(cls) -> "ColumnElement[bool] | None":
         """SQLAlchemy predicate selecting non-superseded failed rows.
 
         Subclasses override to enable the "already complete" skip in
@@ -73,7 +79,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
         """
         return None
 
-    async def _row_exists(self, predicate=None) -> bool:
+    async def _row_exists(self, predicate: "ColumnElement[bool] | None" = None) -> bool:
         if self._request_model is None:
             return False
         from sqlmodel import select
@@ -102,7 +108,8 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             return False
         return await self._row_exists(predicate)
 
-    async def make(  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    async def make(  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         replace: bool = False,
         rate_limit: float | None = None,
@@ -165,7 +172,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
         rate_limit: float | None = None,
         rate_period: float | None = None,
         max_retries: int = 1,
-    ) -> dict[str, list[list]]:
+    ) -> dict[str, list[list[TRequest]]]:
         """Create DB and run parallel-lane, sequential-step graph execution."""
         await self.create_tables(replace=replace)
         return await self.execute_graph(
@@ -210,13 +217,13 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
         self,
         lanes: list[str],
         num_steps: int,
-        populate_step: Callable | None = None,
+        populate_step: Callable[..., Awaitable[uuid.UUID | None]] | None = None,
         rate_limit: float | None = None,
         rate_period: float | None = None,
         max_retries: int = 1,
         checkpointer: Any | None = None,
         thread_id: str | None = None,
-    ) -> dict[str, list[list]]:
+    ) -> dict[str, list[list[TRequest]]]:
         """Run a parallel-lane, sequential-step graph over the request rows.
 
         If ``populate_step`` is omitted, ``self._populate_lane_step`` is used.
@@ -240,31 +247,23 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             rate_period if rate_period is not None else self.rate_period
         )
 
-        async def execute_pending_wrapper(group_id_str: str) -> list:
-            group_uuid = (
-                uuid.UUID(group_id_str)
-                if isinstance(group_id_str, str)
-                else group_id_str
-            )
+        async def execute_pending_wrapper(group_id_str: str) -> list[TRequest]:
+            group_uuid = uuid.UUID(group_id_str)
             return await self._execute_pending(
                 group_id=group_uuid,
                 rate_limit=effective_rate_limit,
                 rate_period=effective_rate_period,
             )
 
-        async def retry_failed_wrapper(group_id_str: str) -> list:
-            group_uuid = (
-                uuid.UUID(group_id_str)
-                if isinstance(group_id_str, str)
-                else group_id_str
-            )
+        async def retry_failed_wrapper(group_id_str: str) -> list[TRequest]:
+            group_uuid = uuid.UUID(group_id_str)
             return await self._retry_failed(
                 group_id=group_uuid,
                 rate_limit=effective_rate_limit,
                 rate_period=effective_rate_period,
             )
 
-        async def get_wave_results_wrapper(group_id: uuid.UUID) -> list:
+        async def get_wave_results_wrapper(group_id: uuid.UUID) -> list[TRequest]:
             return await self._get_wave_results(group_id=group_id)
 
         graph = build_recursive_task_graph(
@@ -291,11 +290,14 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             config=config if config else None,  # pyright: ignore[reportArgumentType]
         )
 
-        return result.get("organized_results", {})
+        organized: dict[str, list[list[TRequest]]] = result.get(
+            "organized_results", {}
+        )
+        return organized
 
     async def _run_batch(
         self,
-        rows: list,
+        rows: list[Any],
         *,
         execute_one: Callable[[Any], Awaitable[Any]],
         rate_limit: float,
@@ -303,7 +305,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
         is_success: Callable[[Any], bool],
         progress_every: int = 100,
         label: str = "request",
-    ) -> list:
+    ) -> list[Any]:
         """Drive ``rows`` through ``execute_one`` concurrently, rate-limited.
 
         Used by subclass ``_execute_pending`` / ``_retry_failed`` methods to
@@ -321,7 +323,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
 
         tasks = [one(r) for r in rows]
 
-        executed: list = []
+        executed: list[Any] = []
         ok = 0
         bad = 0
         total = 0
@@ -331,7 +333,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             total += 1
             try:
                 result = await future
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # tally individual task failures without aborting the wave
                 bad += 1
                 logger.error(f"{label} failed with exception: {e}")
                 continue

@@ -57,7 +57,7 @@ def render_prompt_template(
                 f"{project_package or 'project'} or p40_flowbase.prompts"
             ) from e
 
-    env = jinja2.Environment(loader=jinja2.BaseLoader())
+    env = jinja2.Environment(loader=jinja2.BaseLoader(), autoescape=False)  # noqa: S701  # markdown/prompt templates, not HTML
     template = env.from_string(template_content)
 
     return template.render(**kwargs)

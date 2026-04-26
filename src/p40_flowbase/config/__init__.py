@@ -4,8 +4,6 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
-from typing import Optional
-
 import pydantic_settings
 
 

@@ -35,6 +35,7 @@ or use a YAML file (e.g. ``replace.yaml``)::
     dg launch --assets 'KEY+' --config replace.yaml
 """
 
+import contextlib
 from enum import Enum
 from typing import Any
 
@@ -91,17 +92,17 @@ class DataObjectIOManager(dg.IOManager):
     for a default IOManager without duplicating persistence logic.
     """
 
-    def __init__(self, local_data: str):
+    def __init__(self, local_data: str) -> None:
         self.local_data = local_data
 
-    def handle_output(self, context, obj):
+    def handle_output(self, context: dg.OutputContext, obj: object) -> None:
         pass
 
-    def load_input(self, context):
-        pass
+    def load_input(self, context: dg.InputContext) -> object:
+        return None
 
 
-class ReplaceResource(dg.ConfigurableResource):
+class ReplaceResource(dg.ConfigurableResource):  # type: ignore[type-arg]
     """Run-scoped switch to force re-creation of asset outputs.
 
     When ``replace`` is True, the asset factory bypasses the
@@ -150,7 +151,7 @@ def asset(
     )
 
     @dg.asset(
-        name=obj_class.id,
+        name=obj_class.id,  # type: ignore[attr-defined]
         partitions_def=partitions_def,
         deps=deps or [],
         group_name=group_name,
@@ -193,9 +194,7 @@ def asset(
             if replace:
                 obj.convert(replace=True)
             else:
-                try:
+                with contextlib.suppress(FileExistsError):
                     obj.convert(replace=False)
-                except FileExistsError:
-                    pass
 
     return _asset

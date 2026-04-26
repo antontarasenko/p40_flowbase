@@ -5,6 +5,7 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import uuid
+from typing import Any, override
 from datetime import (
     UTC,
     datetime,
@@ -123,7 +124,8 @@ class LLMRequest(SQLModel, table=True):
     requested_at_utc: datetime | None = None
     superseded_by_id: uuid.UUID | None = None
 
-    def model_post_init(self, __context):
+    @override
+    def model_post_init(self, __context: Any) -> None:  # noqa: PYI063
         """Calculate expected_input_cost_usd from prompts."""
         system_prompt = self.system_prompt or ""
         user_prompt = self.user_prompt or ""

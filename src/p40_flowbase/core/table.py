@@ -5,9 +5,12 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 from abc import abstractmethod
+from enum import Enum
 from typing import (
+    ClassVar,
     Generic,
     TypeVar,
+    override,
 )
 
 import pandas as pd
@@ -34,10 +37,10 @@ class Table(DataObject):
         row_schema: Pydantic model class defining the row schema.
     """
 
-    make_format: TableFormat = TableFormat.PARQUET  # pyright: ignore[reportIncompatibleVariableOverride]
-    row_schema: type[pyd.BaseModel]
+    make_format: ClassVar[TableFormat] = TableFormat.PARQUET  # pyright: ignore[reportIncompatibleVariableOverride]
+    row_schema: ClassVar[type[pyd.BaseModel]]
 
-    def __init__(self, version):
+    def __init__(self, version: Enum) -> None:
         super().__init__(version)
         self._df: pd.DataFrame | None = None
 
@@ -118,7 +121,7 @@ class TableFromDB(Table, Generic[TDB]):
                 return df
     """
 
-    db_class: type[TDB]
+    db_class: ClassVar[type[DB]]
 
     @abstractmethod
     async def _build_df(self, db: TDB) -> pd.DataFrame:
@@ -127,9 +130,10 @@ class TableFromDB(Table, Generic[TDB]):
         Subclasses must implement this method.
         """
 
+    @override
     async def _amake(self) -> None:
         self.local_dir.mkdir(parents=True, exist_ok=True)
-        db = self.db_class(self.version)
+        db: TDB = self.db_class(self.version)  # type: ignore[assignment]
         try:
             df = await self._build_df(db)
             df.convert_dtypes(dtype_backend="pyarrow").to_parquet(
@@ -139,6 +143,7 @@ class TableFromDB(Table, Generic[TDB]):
         finally:
             await db.close()
 
+    @override
     def _make(self) -> None:
         import asyncio
 

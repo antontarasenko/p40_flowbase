@@ -6,9 +6,10 @@ Copyright (c) 2025 Anton Tarasenko
 
 import json
 import re
+from typing import Any
 
 
-def extract_json_from_response(response_text: str | None) -> dict | None:
+def extract_json_from_response(response_text: str | None) -> dict[str, Any] | None:
     """Extract a JSON object from model response text.
 
     Tries in order:
@@ -21,10 +22,9 @@ def extract_json_from_response(response_text: str | None) -> dict | None:
     if not response_text:
         return None
 
-    try:
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        pass
+    parsed: dict[str, Any] | None = _try_parse(response_text)
+    if parsed is not None:
+        return parsed
 
     code_block_match = re.search(
         r"```(?:json)?\s*\n?(.*?)\n?```",
@@ -32,10 +32,9 @@ def extract_json_from_response(response_text: str | None) -> dict | None:
         re.DOTALL,
     )
     if code_block_match:
-        try:
-            return json.loads(code_block_match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
+        parsed = _try_parse(code_block_match.group(1).strip())
+        if parsed is not None:
+            return parsed
 
     json_match = re.search(
         r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",
@@ -43,9 +42,16 @@ def extract_json_from_response(response_text: str | None) -> dict | None:
         re.DOTALL,
     )
     if json_match:
-        try:
-            return json.loads(json_match.group(0))
-        except json.JSONDecodeError:
-            pass
+        parsed = _try_parse(json_match.group(0))
+        if parsed is not None:
+            return parsed
 
     return None
+
+
+def _try_parse(text: str) -> dict[str, Any] | None:
+    try:
+        result: Any = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return result if isinstance(result, dict) else None

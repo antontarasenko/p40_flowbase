@@ -53,19 +53,19 @@ class TestHostCoordinatorBackoff:
         epoch_before = coord.backoff_epoch
         coord.set_backoff(epoch_before)
         # A second lane captured the same stale epoch; must be a no-op.
-        prev_unavailable_until = coord._unavailable_until
+        prev_unavailable_until = coord.state.unavailable_until
         coord.set_backoff(epoch_before)
         assert coord.backoff_epoch == epoch_before + 1
-        assert coord._unavailable_until == prev_unavailable_until
+        assert coord.state.unavailable_until == prev_unavailable_until
 
     def test_exponential_backoff_growth(self):
         coord = HostCoordinator(base_backoff=10.0, max_backoff=1_000_000.0)
         coord.set_backoff(0)
-        first_window = coord._unavailable_until - time.monotonic()
+        first_window = coord.state.unavailable_until - time.monotonic()
         coord.set_backoff(1)
-        second_window = coord._unavailable_until - time.monotonic()
+        second_window = coord.state.unavailable_until - time.monotonic()
         coord.set_backoff(2)
-        third_window = coord._unavailable_until - time.monotonic()
+        third_window = coord.state.unavailable_until - time.monotonic()
         assert 9 < first_window < 11
         assert 19 < second_window < 21
         assert 39 < third_window < 41
@@ -75,18 +75,19 @@ class TestHostCoordinatorBackoff:
         coord.set_backoff(0)
         coord.set_backoff(1)
         coord.set_backoff(2)
-        window = coord._unavailable_until - time.monotonic()
+        window = coord.state.unavailable_until - time.monotonic()
         assert window <= 150.0 + 0.5
 
     def test_reset_on_success_clears_state(self):
         coord = HostCoordinator(base_backoff=60.0)
         coord.set_backoff(0)
-        assert coord.is_unavailable is True
+        assert coord.is_unavailable
         coord.reset_on_success()
-        assert coord.is_unavailable is False
-        assert coord.backoff_epoch == 0
-        assert coord._backoff_step == 0
-        assert coord._outage_start == 0.0
+        assert not coord.is_unavailable
+        state = coord.state  # type: ignore[unreachable]
+        assert state.backoff_epoch == 0
+        assert state.backoff_step == 0
+        assert state.outage_start == 0.0
 
 
 class TestHostCoordinatorWaitForAvailability:

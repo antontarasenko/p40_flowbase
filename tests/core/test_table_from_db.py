@@ -76,7 +76,7 @@ class TestTableFromDB:
     @pytest.mark.asyncio
     async def test_amake_writes_parquet_from_db(self, populated_widget_db):
         table = _WidgetsTable(_Version.V1)
-        await table._amake()
+        await table._amake()  # pyright: ignore[reportPrivateUsage]
         parquet_path = table.path_to_format(TableFormat.PARQUET)
         assert parquet_path.exists()
         result_df = pd.read_parquet(parquet_path)
@@ -87,7 +87,7 @@ class TestTableFromDB:
     @pytest.mark.asyncio
     async def test_df_property_reads_written_parquet(self, populated_widget_db):
         table = _WidgetsTable(_Version.V1)
-        await table._amake()
+        await table._amake()  # pyright: ignore[reportPrivateUsage]
         df = table.df
         assert len(df) == 2
         assert set(df["value"]) == {10, 20}
@@ -103,6 +103,6 @@ class TestTableFromDB:
         async def run_from_async():
             table = _WidgetsTable(_Version.V1)
             with pytest.raises(RuntimeError, match="async context"):
-                table._make()
+                table._make()  # pyright: ignore[reportPrivateUsage]
 
         asyncio.run(run_from_async())

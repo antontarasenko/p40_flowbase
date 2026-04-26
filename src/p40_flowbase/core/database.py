@@ -5,13 +5,24 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import asyncio
+from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
+    ClassVar,
+    override,
 )
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import DBFormat
 from p40_flowbase.logging import logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import (
+        AsyncEngine,
+        async_sessionmaker,
+    )
+    from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class DB(DataObject):
@@ -28,20 +39,20 @@ class DB(DataObject):
     mixins for request management.
     """
 
-    make_format: DBFormat = DBFormat.SQLITE  # pyright: ignore[reportIncompatibleVariableOverride]
-    tables: list[Any] = []
+    make_format: ClassVar[DBFormat] = DBFormat.SQLITE  # pyright: ignore[reportIncompatibleVariableOverride]
+    tables: ClassVar[list[Any]] = []
 
-    def __init__(self, version):
+    def __init__(self, version: Enum) -> None:
         super().__init__(version)
-        self._engine = None
-        self._session_factory = None
+        self._engine: "AsyncEngine | None" = None
+        self._session_factory: "async_sessionmaker[AsyncSession] | None" = None
 
     def _get_database_url(self) -> str:
         """Return the async database URL."""
         return f"sqlite+aiosqlite:///{self.path_to_format(DBFormat.SQLITE)}"
 
     @property
-    def engine(self):
+    def engine(self) -> "AsyncEngine":
         """Return the async database engine (lazy loading)."""
         if self._engine is None:
             from sqlalchemy.ext.asyncio import create_async_engine
@@ -53,7 +64,7 @@ class DB(DataObject):
         return self._engine
 
     @property
-    def session_factory(self):
+    def session_factory(self) -> "async_sessionmaker[AsyncSession]":
         """Return the async session factory."""
         if self._session_factory is None:
             from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -66,7 +77,7 @@ class DB(DataObject):
             )
         return self._session_factory
 
-    async def get_session(self):
+    async def get_session(self) -> "AsyncSession":
         """Get an async session context manager."""
         return self.session_factory()
 
@@ -112,11 +123,12 @@ class DB(DataObject):
             async with self.engine.begin() as conn:
                 await conn.run_sync(SQLModelBase.metadata.drop_all)
 
+    @override
     def _make(self) -> None:
         """Create and save the default format (database file)."""
         self.local_dir.mkdir(parents=True, exist_ok=True)
 
-        async def _async_make():
+        async def _async_make() -> None:
             await self._create_tables()
 
         try:
@@ -147,7 +159,7 @@ class DB(DataObject):
         await self._create_tables()
         logger.info(f"{self.object_stem} ready")
 
-    async def convert_async(self, fmt=None, replace: bool = False) -> None:
+    async def convert_async(self, fmt: Any = None, replace: bool = False) -> None:
         """Async version of convert() for use in async contexts.
 
         Args:
@@ -170,14 +182,16 @@ class DB(DataObject):
             )
 
         if not isinstance(self.make_format, StrEnum):
-            raise ValueError(
+            raise TypeError(
                 f"{self.__class__.__name__} does not define make_format as a StrEnum"
             )
 
         format_class = type(self.make_format)
 
         if fmt is None:
-            formats_to_create = [f for f in format_class if f != self.make_format]
+            formats_to_create = [
+                f for f in format_class if f != self.make_format  # type: ignore[redundant-expr]
+            ]
         else:
             if not isinstance(fmt, StrEnum):
                 raise ValueError(
@@ -190,7 +204,7 @@ class DB(DataObject):
                 )
             if fmt == self.make_format:
                 return
-            formats_to_create = [fmt]
+            formats_to_create = [fmt]  # type: ignore[unreachable]
 
         for fmt_enum in formats_to_create:
             format_path = self.path_to_format(fmt_enum)
@@ -199,10 +213,10 @@ class DB(DataObject):
                     f"Format '{fmt_enum.value}' already exists for {self.object_stem}. "
                     f"Use replace=True to overwrite."
                 )
-            elif format_path.exists() and replace:
+            if format_path.exists() and replace:
                 self._delete_format(fmt_enum)
 
-        self._convert_formats(formats_to_create)  # pyright: ignore[reportArgumentType]
+        self._convert_formats(formats_to_create)
 
     async def close(self) -> None:
         """Close the database engine and cleanup resources."""
