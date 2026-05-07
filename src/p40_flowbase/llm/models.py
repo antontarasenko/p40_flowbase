@@ -5,11 +5,11 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import uuid
-from typing import Any, override
 from datetime import (
     UTC,
     datetime,
 )
+from typing import Any, override
 
 from sqlalchemy import (
     Column,

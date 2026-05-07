@@ -1,8 +1,10 @@
 """Tests for TableFromDB."""
 
 from enum import Enum
+from typing import override
 
-import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pydantic as pyd
 import pytest
 from sqlmodel import (
@@ -48,14 +50,15 @@ class _WidgetsTable(TableFromDB[_WidgetDB]):
     db_class = _WidgetDB
     row_schema = _WidgetRow
 
-    async def _build_df(self, db: _WidgetDB) -> pd.DataFrame:
+    @override
+    async def _build_df(self, db: _WidgetDB) -> pa.Table:
         from sqlmodel import select
 
         async with db.session_factory() as session:
             result = await session.exec(select(_Widget))
             rows = result.all()
 
-        return pd.DataFrame(
+        return pa.Table.from_pylist(
             [{"widget_id": r.widget_id, "name": r.name, "value": r.value} for r in rows]
         )
 
@@ -79,18 +82,18 @@ class TestTableFromDB:
         await table._amake()  # pyright: ignore[reportPrivateUsage]
         parquet_path = table.path_to_format(TableFormat.PARQUET)
         assert parquet_path.exists()
-        result_df = pd.read_parquet(parquet_path)
-        assert list(result_df.columns) == ["widget_id", "name", "value"]
-        assert len(result_df) == 2
-        assert set(result_df["name"]) == {"alpha", "beta"}
+        result = pq.read_table(parquet_path)
+        assert result.column_names == ["widget_id", "name", "value"]
+        assert result.num_rows == 2
+        assert set(result["name"].to_pylist()) == {"alpha", "beta"}
 
     @pytest.mark.asyncio
     async def test_df_property_reads_written_parquet(self, populated_widget_db):
         table = _WidgetsTable(_Version.V1)
         await table._amake()  # pyright: ignore[reportPrivateUsage]
         df = table.df
-        assert len(df) == 2
-        assert set(df["value"]) == {10, 20}
+        assert df.num_rows == 2
+        assert set(df["value"].to_pylist()) == {10, 20}
 
     def test_sync_make_raises_in_async_context_via_asyncio_run_fail(self):
         """``_make()`` delegates to ``_amake()`` via ``asyncio.run``.

@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Replace `pandas` with `duckdb`, `pyarrow` in `Table`
+- Drop support for Markdown format (`TableFormat.MD`) in `Table`
 - devel: Tighten tooling config (`basedpyright`, `ruff`, `mypy`, `pytest`)
 - devel: Fix issues raised by `basedpyright`, `ruff`, `mypy`
 

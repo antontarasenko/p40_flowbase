@@ -35,7 +35,6 @@ class TableFormat(StrEnum):
     PARQUET = "parquet"
     CSV = "csv"
     TSV = "tsv"
-    MD = "md"
     JSON = "json"
 
 

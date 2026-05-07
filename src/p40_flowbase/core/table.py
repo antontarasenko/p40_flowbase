@@ -4,6 +4,7 @@ MIT License
 Copyright (c) 2025 Anton Tarasenko
 """
 
+import json
 from abc import abstractmethod
 from enum import Enum
 from typing import (
@@ -13,7 +14,9 @@ from typing import (
     override,
 )
 
-import pandas as pd
+import duckdb
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pydantic as pyd
 
 from p40_flowbase.core.base import DataObject
@@ -25,12 +28,11 @@ from p40_flowbase.logging import logger
 class Table(DataObject):
     """Base class for tabular data objects.
 
-    Table objects store data as pandas DataFrames.
+    Table objects store data as Apache Arrow tables backed by Parquet on disk.
     Supported formats:
         - PARQUET: Apache Parquet format (default)
         - CSV: Comma-separated values
         - TSV: Tab-separated values
-        - MD: Markdown table
         - JSON: JSON array of records
 
     Attributes:
@@ -42,71 +44,48 @@ class Table(DataObject):
 
     def __init__(self, version: Enum) -> None:
         super().__init__(version)
-        self._df: pd.DataFrame | None = None
+        self._table: pa.Table | None = None
 
     @property
-    def df(self) -> pd.DataFrame:
-        """Return the object as pandas DataFrame (lazy loading)."""
-        if self._df is None:
-            self._df = pd.read_parquet(
-                self.path_to_format(TableFormat.PARQUET),
-                dtype_backend="pyarrow",
-            )
-        return self._df
+    def df(self) -> pa.Table:
+        """Return the object as a pyarrow Table (lazy loading)."""
+        if self._table is None:
+            self._table = pq.read_table(self.path_to_format(TableFormat.PARQUET))
+        return self._table
 
     def _convert_to_csv(self) -> None:
         """Convert parquet to csv."""
-        df = pd.read_parquet(
-            self.path_to_format(TableFormat.PARQUET),
-            dtype_backend="pyarrow",
-        )
-        csv_path = self.path_to_format(TableFormat.CSV)
-        df.to_csv(csv_path, index=False)
-        logger.info(f"Converted to CSV: {csv_path}")
+        src = self.path_to_format(TableFormat.PARQUET)
+        dst = self.path_to_format(TableFormat.CSV)
+        duckdb.read_parquet(str(src)).write_csv(str(dst), header=True)
+        logger.info(f"Converted to CSV: {dst}")
 
     def _convert_to_tsv(self) -> None:
         """Convert parquet to tsv."""
-        df = pd.read_parquet(
-            self.path_to_format(TableFormat.PARQUET),
-            dtype_backend="pyarrow",
-        )
-        tsv_path = self.path_to_format(TableFormat.TSV)
-        df.to_csv(tsv_path, sep="\t", index=False)
-        logger.info(f"Converted to TSV: {tsv_path}")
-
-    def _convert_to_md(self) -> None:
-        """Convert parquet to markdown."""
-        df = pd.read_parquet(
-            self.path_to_format(TableFormat.PARQUET),
-            dtype_backend="pyarrow",
-        )
-        md_content = df.to_markdown(index=False)
-        md_path = self.path_to_format(TableFormat.MD)
-        with open(md_path, "w") as f:
-            f.write(md_content or "")
-        logger.info(f"Converted to Markdown: {md_path}")
+        src = self.path_to_format(TableFormat.PARQUET)
+        dst = self.path_to_format(TableFormat.TSV)
+        duckdb.read_parquet(str(src)).write_csv(str(dst), header=True, sep="\t")
+        logger.info(f"Converted to TSV: {dst}")
 
     def _convert_to_json(self) -> None:
-        """Convert parquet to json."""
-        df = pd.read_parquet(
-            self.path_to_format(TableFormat.PARQUET),
-            dtype_backend="pyarrow",
-        )
-        json_path = self.path_to_format(TableFormat.JSON)
-        df.to_json(json_path, orient="records", indent=2)
-        logger.info(f"Converted to JSON: {json_path}")
+        """Convert parquet to json (array of records, indented)."""
+        src = self.path_to_format(TableFormat.PARQUET)
+        dst = self.path_to_format(TableFormat.JSON)
+        rows = pq.read_table(src).to_pylist()
+        dst.write_text(json.dumps(rows, indent=2, default=str))
+        logger.info(f"Converted to JSON: {dst}")
 
 
 TDB = TypeVar("TDB", bound=DB)
 
 
 class TableFromDB(Table, Generic[TDB]):
-    """Table built by extracting a DataFrame from a companion ``DB``.
+    """Table built by extracting a pyarrow Table from a companion ``DB``.
 
     Subclasses set ``db_class`` and implement ``async _build_df(self, db)``.
-    ``_amake`` opens the DB, builds the frame, writes parquet, then closes
-    the DB. No ``exists()`` fallback — the upstream DB is assumed to already
-    be materialized (in Dagster, ensure this via ``deps=[...]``).
+    ``_amake`` opens the DB, builds the arrow table, writes parquet, then
+    closes the DB. No ``exists()`` fallback — the upstream DB is assumed
+    to already be materialized (in Dagster, ensure this via ``deps=[...]``).
 
     Example:
         class MyTable(TableFromDB[MyDB]):
@@ -115,17 +94,17 @@ class TableFromDB(Table, Generic[TDB]):
             row_schema = MyRowSchema
             supported_versions = (MyVersions.V1,)
 
-            async def _build_df(self, db: MyDB) -> pd.DataFrame:
+            async def _build_df(self, db: MyDB) -> pa.Table:
                 async with db.session_factory() as session:
-                    ...
-                return df
+                    rows = (await session.exec(select(MyRow))).all()
+                return pa.Table.from_pylist([r.model_dump() for r in rows])
     """
 
     db_class: ClassVar[type[DB]]
 
     @abstractmethod
-    async def _build_df(self, db: TDB) -> pd.DataFrame:
-        """Return a DataFrame extracted from ``db``.
+    async def _build_df(self, db: TDB) -> pa.Table:
+        """Return a pyarrow Table extracted from ``db``.
 
         Subclasses must implement this method.
         """
@@ -135,11 +114,8 @@ class TableFromDB(Table, Generic[TDB]):
         self.local_dir.mkdir(parents=True, exist_ok=True)
         db: TDB = self.db_class(self.version)  # type: ignore[assignment]
         try:
-            df = await self._build_df(db)
-            df.convert_dtypes(dtype_backend="pyarrow").to_parquet(
-                self.path_to_format(TableFormat.PARQUET),
-                index=False,
-            )
+            table = await self._build_df(db)
+            pq.write_table(table, self.path_to_format(TableFormat.PARQUET))
         finally:
             await db.close()
 

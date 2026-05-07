@@ -51,7 +51,6 @@ from p40_flowbase.dagster import (
     partitions_from_versions,
 )
 from p40_flowbase.helpers import (
-    create_summary_stats_table,
     extract_json_from_response,
     render_prompt_template,
     safe_path_component,
@@ -127,7 +126,6 @@ __all__ = [
     "__version__",
     "apply_style",
     "asset",
-    "create_summary_stats_table",
     "extract_json_from_response",
     "get_version_from_partition",
     "logger",

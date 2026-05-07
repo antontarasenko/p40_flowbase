@@ -72,8 +72,8 @@ class DataObject(ABC):
             supported_versions = (MyVersions.V1, MyVersions.V2)
 
             def _make(self):
-                df = pd.DataFrame(...)
-                df.to_parquet(self.path_to_format(TableFormat.PARQUET))
+                table = pa.Table.from_pylist([{"col": 1}, {"col": 2}])
+                pq.write_table(table, self.path_to_format(TableFormat.PARQUET))
     """
 
     id: ClassVar[str]

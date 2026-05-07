@@ -12,9 +12,11 @@ Regression coverage for the async-in-Dagster-loop bug:
 
 import asyncio
 from enum import Enum
+from typing import override
 
 import dagster as dg
-import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pydantic as pyd
 from sqlmodel import (
     Field,
@@ -44,11 +46,10 @@ class _PlainTable(Table):
     supported_versions = (_V.V1,)
     row_schema = _AFRow
 
+    @override
     def _make(self) -> None:
-        df = pd.DataFrame([{"n": 1}, {"n": 2}]).convert_dtypes(
-            dtype_backend="pyarrow",
-        )
-        df.to_parquet(self.path_to_format(TableFormat.PARQUET), index=False)
+        table = pa.Table.from_pylist([{"n": 1}, {"n": 2}])
+        pq.write_table(table, self.path_to_format(TableFormat.PARQUET))
 
 
 class _AFWidget(SQLModel, table=True):
@@ -72,11 +73,12 @@ class _AFTable(TableFromDB[_AFDB]):
     db_class = _AFDB
     row_schema = _AFRow
 
-    async def _build_df(self, db: _AFDB) -> pd.DataFrame:
+    @override
+    async def _build_df(self, db: _AFDB) -> pa.Table:
         async with db.session_factory() as session:
             result = await session.exec(select(_AFWidget))
             rows = result.all()
-        return pd.DataFrame([{"n": r.n} for r in rows])
+        return pa.Table.from_pylist([{"n": r.n} for r in rows])
 
 
 class _AFComposite(Composite):
@@ -92,6 +94,7 @@ class _AFComposite(Composite):
     description = "Composite with nested asyncio.run"
     supported_versions = (_V.V1,)
 
+    @override
     def _make(self) -> None:
         asyncio.run(self._write_files())
 
@@ -129,7 +132,7 @@ def test_plain_table_asset_materializes(test_local_data):
     table = _PlainTable(_V.V1)
     assert table.path_to_format(TableFormat.PARQUET).exists()
     df = table.df
-    assert list(df["n"]) == [1, 2]
+    assert df["n"].to_pylist() == [1, 2]
 
 
 def test_table_from_db_asset_materializes(test_local_data):
@@ -156,7 +159,7 @@ def test_table_from_db_asset_materializes(test_local_data):
     table = _AFTable(_V.V1)
     assert table.path_to_format(TableFormat.PARQUET).exists()
     df = table.df
-    assert sorted(df["n"].tolist()) == [10, 20]
+    assert sorted(df["n"].to_pylist()) == [10, 20]  # type: ignore[type-var]
 
 
 def test_composite_asset_materializes(test_local_data):

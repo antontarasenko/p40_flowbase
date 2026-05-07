@@ -44,8 +44,8 @@ class DB(DataObject):
 
     def __init__(self, version: Enum) -> None:
         super().__init__(version)
-        self._engine: "AsyncEngine | None" = None
-        self._session_factory: "async_sessionmaker[AsyncSession] | None" = None
+        self._engine: AsyncEngine | None = None
+        self._session_factory: async_sessionmaker[AsyncSession] | None = None
 
     def _get_database_url(self) -> str:
         """Return the async database URL."""
