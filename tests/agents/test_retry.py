@@ -9,7 +9,7 @@ import pytest
 from sqlmodel import select
 
 from p40_flowbase.agents.models import AgentTask
-from p40_flowbase.agents.providers import AgentModels
+from p40_flowbase.providers import Models
 
 
 class TestAgentRetry:
@@ -18,8 +18,8 @@ class TestAgentRetry:
         self,
         agent_db,
     ):
-        failed_task = AgentTask(
-            model=AgentModels.GPT_5_NANO,
+        failed_task = AgentTask.from_spec(
+            Models.GPT_5_NANO,
             task_prompt="test task",
             started_at_utc=datetime.now(UTC),
             is_error=True,
@@ -58,19 +58,19 @@ class TestAgentRetry:
             new_task = result.one()
 
         assert new_task.task_prompt == "test task"
-        assert new_task.model == AgentModels.GPT_5_NANO
+        assert new_task.model == Models.GPT_5_NANO
 
     @pytest.mark.asyncio
     async def test_retry_skips_already_superseded(self, agent_db):
-        already_superseded = AgentTask(
-            model=AgentModels.GPT_5_NANO,
+        already_superseded = AgentTask.from_spec(
+            Models.GPT_5_NANO,
             task_prompt="task a",
             started_at_utc=datetime.now(UTC),
             is_error=True,
             superseded_by_id=uuid.uuid4(),
         )
-        not_superseded = AgentTask(
-            model=AgentModels.GPT_5_NANO,
+        not_superseded = AgentTask.from_spec(
+            Models.GPT_5_NANO,
             task_prompt="task b",
             started_at_utc=datetime.now(UTC),
             is_error=True,
@@ -110,8 +110,8 @@ class TestAgentRetry:
 
     @pytest.mark.asyncio
     async def test_second_retry_does_not_re_retry_originals(self, agent_db):
-        failed_task = AgentTask(
-            model=AgentModels.GPT_5_NANO,
+        failed_task = AgentTask.from_spec(
+            Models.GPT_5_NANO,
             task_prompt="test task",
             started_at_utc=datetime.now(UTC),
             is_error=True,

@@ -9,7 +9,7 @@ import pytest
 from sqlmodel import select
 
 from p40_flowbase.llm.models import LLMRequest
-from p40_flowbase.llm.providers import LLMModels
+from p40_flowbase.providers import Models
 
 
 class TestLLMRetry:
@@ -18,8 +18,8 @@ class TestLLMRetry:
         self,
         llm_db,
     ):
-        failed_req = LLMRequest(
-            model=LLMModels.GEMINI_2_5_FLASH_LITE,
+        failed_req = LLMRequest.from_spec(
+            Models.GEMINI_2_5_FLASH_LITE,
             user_prompt="test prompt",
             requested_at_utc=datetime.now(UTC),
             response_text=None,
@@ -57,19 +57,19 @@ class TestLLMRetry:
             new_req = result.one()
 
         assert new_req.user_prompt == "test prompt"
-        assert new_req.model == LLMModels.GEMINI_2_5_FLASH_LITE
+        assert new_req.model == Models.GEMINI_2_5_FLASH_LITE
 
     @pytest.mark.asyncio
     async def test_retry_skips_already_superseded(self, llm_db):
-        already_superseded = LLMRequest(
-            model=LLMModels.GEMINI_2_5_FLASH_LITE,
+        already_superseded = LLMRequest.from_spec(
+            Models.GEMINI_2_5_FLASH_LITE,
             user_prompt="prompt a",
             requested_at_utc=datetime.now(UTC),
             response_text=None,
             superseded_by_id=uuid.uuid4(),
         )
-        not_superseded = LLMRequest(
-            model=LLMModels.GEMINI_2_5_FLASH_LITE,
+        not_superseded = LLMRequest.from_spec(
+            Models.GEMINI_2_5_FLASH_LITE,
             user_prompt="prompt b",
             requested_at_utc=datetime.now(UTC),
             response_text=None,
@@ -109,8 +109,8 @@ class TestLLMRetry:
 
     @pytest.mark.asyncio
     async def test_second_retry_does_not_re_retry_originals(self, llm_db):
-        failed_req = LLMRequest(
-            model=LLMModels.GEMINI_2_5_FLASH_LITE,
+        failed_req = LLMRequest.from_spec(
+            Models.GEMINI_2_5_FLASH_LITE,
             user_prompt="test prompt",
             requested_at_utc=datetime.now(UTC),
             response_text=None,

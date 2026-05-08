@@ -11,9 +11,6 @@ from p40_flowbase.agents import (
     AgentDB,
     AgentFile,
     AgentMessage,
-    AgentModels,
-    AgentModelVersion,
-    AgentProviders,
     AgentTask,
     AgentTaskExtra,
     AgentTaskGroup,
@@ -65,14 +62,17 @@ from p40_flowbase.http import (
 from p40_flowbase.llm import (
     LLMDB,
     LLMFile,
-    LLMModels,
-    LLMModelVersion,
-    LLMProviders,
     LLMRequest,
     LLMRequestExtra,
     LLMRequestGroup,
 )
 from p40_flowbase.logging import logger
+from p40_flowbase.providers import (
+    AGENT_SUPPORTED_PROVIDERS,
+    Models,
+    ModelVersion,
+    Providers,
+)
 from p40_flowbase.styles import (
     STYLES,
     apply_style,
@@ -81,6 +81,7 @@ from p40_flowbase.styles import (
 __version__ = version("p40_flowbase")
 
 __all__ = [
+    "AGENT_SUPPORTED_PROVIDERS",
     "DB",
     "HTTPDB",
     "LLMDB",
@@ -88,9 +89,6 @@ __all__ = [
     "AgentDB",
     "AgentFile",
     "AgentMessage",
-    "AgentModelVersion",
-    "AgentModels",
-    "AgentProviders",
     "AgentTask",
     "AgentTaskExtra",
     "AgentTaskGroup",
@@ -111,14 +109,14 @@ __all__ = [
     "HTTPRequestGroup",
     "HostCoordinator",
     "LLMFile",
-    "LLMModelVersion",
-    "LLMModels",
-    "LLMProviders",
     "LLMRequest",
     "LLMRequestExtra",
     "LLMRequestGroup",
     "Model",
     "ModelFormat",
+    "ModelVersion",
+    "Models",
+    "Providers",
     "ReplaceResource",
     "Table",
     "TableFormat",

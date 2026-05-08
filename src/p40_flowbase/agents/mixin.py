@@ -26,11 +26,11 @@ from p40_flowbase.agents.models import (
     AgentTask,
     AgentToolCall,
 )
-from p40_flowbase.agents.providers import (
-    AgentProviders,
-)
 from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.logging import logger
+from p40_flowbase.providers import (
+    Providers,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.sql.elements import ColumnElement
@@ -175,8 +175,8 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                     else:
                         output_format_json = json.dumps(output_format)
 
-                agent_task = AgentTask(
-                    model=task_data["model"],
+                agent_task = AgentTask.from_spec(
+                    task_data["model"],
                     task_prompt=task_data["task_prompt"],
                     system_prompt=task_data.get("system_prompt"),
                     effort=task_data.get("effort"),
@@ -319,11 +319,11 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         task: AgentTask,
     ) -> AgentTask:
         """Dispatch an agent task to the correct provider SDK."""
-        provider = task.model.value.provider
+        provider = task.model.provider
 
-        if provider == AgentProviders.OPENAI:
+        if provider == Providers.OPENAI:
             return await self._execute_openai_agent(task)
-        if provider == AgentProviders.ANTHROPIC:
+        if provider == Providers.ANTHROPIC:
             return await self._execute_anthropic_agent(task)
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -353,7 +353,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             agent = openai_agents.Agent(
                 name="TaskAgent",
                 instructions=task.system_prompt or "",
-                model=task.model.value.api_id,
+                model=task.model.api_id,
                 model_settings=model_settings,
             )
 
@@ -449,7 +449,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                 output_format = json.loads(task.output_format)
 
             options = claude_sdk.ClaudeAgentOptions(
-                model=task.model.value.api_id,
+                model=task.model.api_id,
                 system_prompt=task.system_prompt,
                 allowed_tools=allowed_tools,  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
                 cwd=task.working_directory,

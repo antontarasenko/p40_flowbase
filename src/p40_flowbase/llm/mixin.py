@@ -30,12 +30,11 @@ from p40_flowbase.llm.models import (
     LLMFile,
     LLMRequest,
 )
-from p40_flowbase.llm.providers import (
-    LLMModels,
-    LLMModelVersion,
-    LLMProviders,
-)
 from p40_flowbase.logging import logger
+from p40_flowbase.providers import (
+    ModelVersion,
+    Providers,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.sql.elements import ColumnElement
@@ -165,14 +164,6 @@ class LLMDB(HTTPDB):
         schema = model_class.model_json_schema()
         result: dict[str, Any] = _ensure_additional_properties_false(schema)
         return result
-
-    def _get_llm_model(self, model_id: str) -> LLMModelVersion:
-        """Return LLM model metadata by id."""
-        return LLMModels.by_id(model_id).value
-
-    def _get_provider_for_model(self, model: str) -> LLMProviders:
-        """Return the provider for a given model id."""
-        return self._get_llm_model(model).provider
 
     def _build_anthropic_request(
         self,
@@ -470,8 +461,8 @@ class LLMDB(HTTPDB):
                     _ensure_additional_properties_false(schema_dict)
                     response_schema_json = json.dumps(schema_dict)
 
-                llm_request = LLMRequest(
-                    model=request_data["model"],
+                llm_request = LLMRequest.from_spec(
+                    request_data["model"],
                     system_prompt=request_data.get("system_prompt"),
                     user_prompt=request_data.get("user_prompt"),
                     temperature=request_data.get("temperature"),
@@ -598,14 +589,14 @@ class LLMDB(HTTPDB):
         ephemeral_headers: dict[str, str] | None = None,
     ) -> tuple[str, dict[str, str], dict[str, str], dict[str, Any]]:
         """Prepare provider-specific URL, headers, and body for an LLM request."""
-        llm_model = llm_request.model.value
+        llm_model = llm_request.model
         provider = llm_model.provider
 
         response_schema = None
         if llm_request.response_schema:
             response_schema = json.loads(llm_request.response_schema)
 
-        if provider == LLMProviders.ANTHROPIC:
+        if provider == Providers.ANTHROPIC:
             api_url = "https://api.anthropic.com/v1/messages"
             request_body = self._build_anthropic_request(
                 model=llm_model.api_id,
@@ -628,7 +619,7 @@ class LLMDB(HTTPDB):
             if ephemeral_headers:
                 api_key_headers.update(ephemeral_headers)
 
-        elif provider == LLMProviders.GOOGLE:
+        elif provider == Providers.GOOGLE:
             api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{llm_model.api_id}:generateContent"
             request_body = self._build_google_request(
                 model=llm_model.api_id,
@@ -646,7 +637,7 @@ class LLMDB(HTTPDB):
             if ephemeral_headers:
                 api_key_headers.update(ephemeral_headers)
 
-        elif provider == LLMProviders.OPENAI:
+        elif provider == Providers.OPENAI:
             api_url = "https://api.openai.com/v1/chat/completions"
             request_body = self._build_openai_request(
                 model=llm_model.api_id,
@@ -672,7 +663,7 @@ class LLMDB(HTTPDB):
     def _parse_llm_response(
         self,
         http_request: HTTPRequest,
-        model: LLMModels,
+        model: ModelVersion,
     ) -> str | None:
         """Parse provider response from the underlying ``HTTPRequest`` row."""
         if not http_request.response_body_text:
@@ -683,12 +674,12 @@ class LLMDB(HTTPDB):
             return None
 
         if http_request.response_status == 200:
-            provider = model.value.provider
-            if provider == LLMProviders.ANTHROPIC:
+            provider = model.provider
+            if provider == Providers.ANTHROPIC:
                 return self._parse_anthropic_response(http_request.response_body_text)
-            if provider == LLMProviders.GOOGLE:
+            if provider == Providers.GOOGLE:
                 return self._parse_google_response(http_request.response_body_text)
-            if provider == LLMProviders.OPENAI:
+            if provider == Providers.OPENAI:
                 return self._parse_openai_response(http_request.response_body_text)
         else:
             logger.error(
