@@ -2,6 +2,10 @@
 
 ## Branch `main`
 
+- Add models `claude_opus_4_7`, `gpt_5_5`, `gpt_5_5_pro`, `gemini_3_1_pro_preview`, `gemini_3_1_flash_lite`
+- Promote `gemini_3_flash` from preview to GA
+- Replace deprecated `gemini_3_pro_preview` with `gemini_3_1_pro_preview`
+- Add `LLMEffort` to Gemini `thinkingConfig`
 - Bump versions in dependencies `claude-agent-sdk`, `langgraph`, `openai-agents`
 - Replace `pandas` with `duckdb`, `pyarrow` in `Table`
 - Drop support for Markdown format (`TableFormat.MD`) in `Table`

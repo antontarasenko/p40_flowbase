@@ -227,6 +227,56 @@ class LLMDB(HTTPDB):
 
         return body
 
+    @staticmethod
+    def _gemini_thinking_config(model: str, effort: str | None) -> dict[str, Any] | None:
+        """Map an ``LLMEffort`` value to a Gemini ``thinkingConfig`` block.
+
+        Gemini 3.x uses ``thinking_level`` (MINIMAL/LOW/MEDIUM/HIGH); Gemini 2.5
+        uses ``thinking_budget`` (token integer; -1 enables dynamic budgeting).
+        Returns ``None`` for non-Gemini models or when effort is unset, so the
+        caller can omit the field entirely.
+        """
+        if effort is None:
+            return None
+
+        if model.startswith("gemini-3"):
+            level_by_effort: dict[str, str] = {
+                "none": "MINIMAL",
+                "minimal": "MINIMAL",
+                "low": "LOW",
+                "medium": "MEDIUM",
+                "high": "HIGH",
+                "xhigh": "HIGH",
+                "max": "HIGH",
+            }
+            level = level_by_effort.get(effort)
+            if level is None:
+                return None
+            # Gemini 3.1 Pro does not support MINIMAL; promote to LOW.
+            if "pro" in model and level == "MINIMAL":
+                level = "LOW"
+            return {"thinking_level": level}
+
+        if model.startswith("gemini-2.5"):
+            budget_by_effort: dict[str, int] = {
+                "none": 0,
+                "minimal": 128,
+                "low": 1024,
+                "medium": 4096,
+                "high": 16384,
+                "xhigh": 24576,
+                "max": -1,
+            }
+            budget = budget_by_effort.get(effort)
+            if budget is None:
+                return None
+            # Gemini 2.5 Pro can't disable thinking; clamp to the documented minimum.
+            if "pro" in model and budget == 0:
+                budget = 128
+            return {"thinking_budget": budget}
+
+        return None
+
     def _build_google_request(
         self,
         model: str,
@@ -235,6 +285,7 @@ class LLMDB(HTTPDB):
         temperature: float | None,
         attachments_data: list[dict[str, Any]],
         response_schema: dict[str, Any] | None = None,
+        effort: str | None = None,
     ) -> dict[str, Any]:
         """Build request body for Google Gemini API."""
         parts: list[dict[str, Any]] = []
@@ -266,6 +317,10 @@ class LLMDB(HTTPDB):
         if response_schema is not None:
             generation_config["responseMimeType"] = "application/json"
             generation_config["responseJsonSchema"] = response_schema
+
+        thinking_config = self._gemini_thinking_config(model=model, effort=effort)
+        if thinking_config is not None:
+            generation_config["thinkingConfig"] = thinking_config
 
         if generation_config:
             body["generationConfig"] = generation_config
@@ -582,6 +637,7 @@ class LLMDB(HTTPDB):
                 temperature=llm_request.temperature,
                 attachments_data=attachments_data,
                 response_schema=response_schema,
+                effort=llm_request.effort,
             )
             stored_headers = {"Content-Type": "application/json"}
             api_key_headers = {}

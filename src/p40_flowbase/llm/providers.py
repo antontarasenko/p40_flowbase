@@ -22,8 +22,10 @@ class LLMProviders(StrEnum):
 class LLMEffort(StrEnum):
     """Reasoning effort levels for LLM requests.
 
-    Supported by Anthropic (low, medium, high, xhigh, max) and
-    OpenAI (none, minimal, low, medium, high, xhigh).
+    Supported by Anthropic (low, medium, high, xhigh, max),
+    OpenAI (none, minimal, low, medium, high, xhigh) and
+    Google Gemini (mapped to ``thinking_level`` for Gemini 3.x and
+    ``thinking_budget`` for Gemini 2.5).
     """
 
     HIGH = "high"
@@ -95,6 +97,14 @@ class LLMModels(Enum):
         input_token_price_usd=0.000005000,
         output_token_price_usd=0.000025000,
     )
+    CLAUDE_OPUS_4_7 = LLMModelVersion(
+        id="claude_opus_4_7",
+        api_id="claude-opus-4-7",
+        name="Claude Opus 4.7",
+        provider=LLMProviders.ANTHROPIC,
+        input_token_price_usd=0.000005000,
+        output_token_price_usd=0.000025000,
+    )
     CLAUDE_SONNET_4_5 = LLMModelVersion(
         id="claude_sonnet_4_5_20250929",
         api_id="claude-sonnet-4-5-20250929",
@@ -135,21 +145,29 @@ class LLMModels(Enum):
         input_token_price_usd=0.000001250,
         output_token_price_usd=0.000010000,
     )
+    GEMINI_3_1_FLASH_LITE = LLMModelVersion(
+        id="gemini_3_1_flash_lite",
+        api_id="gemini-3.1-flash-lite",
+        name="Gemini 3.1 Flash Lite",
+        provider=LLMProviders.GOOGLE,
+        input_token_price_usd=0.000000250,
+        output_token_price_usd=0.000001500,
+    )
+    GEMINI_3_1_PRO = LLMModelVersion(
+        id="gemini_3_1_pro_preview",
+        api_id="gemini-3.1-pro-preview",
+        name="Gemini 3.1 Pro",
+        provider=LLMProviders.GOOGLE,
+        input_token_price_usd=0.000002000,
+        output_token_price_usd=0.000012000,
+    )
     GEMINI_3_FLASH = LLMModelVersion(
-        id="gemini_3_flash_preview",
-        api_id="gemini-3-flash-preview",
+        id="gemini_3_flash",
+        api_id="gemini-3-flash",
         name="Gemini 3 Flash",
         provider=LLMProviders.GOOGLE,
         input_token_price_usd=0.000000500,
         output_token_price_usd=0.000003000,
-    )
-    GEMINI_3_PRO = LLMModelVersion(
-        id="gemini_3_pro_preview",
-        api_id="gemini-3-pro-preview",
-        name="Gemini 3 Pro",
-        provider=LLMProviders.GOOGLE,
-        input_token_price_usd=0.000002000,
-        output_token_price_usd=0.000012000,
     )
     GPT_5 = LLMModelVersion(
         id="gpt_5",
@@ -182,6 +200,22 @@ class LLMModels(Enum):
         provider=LLMProviders.OPENAI,
         input_token_price_usd=0.000000750,
         output_token_price_usd=0.000004500,
+    )
+    GPT_5_5 = LLMModelVersion(
+        id="gpt_5_5",
+        api_id="gpt-5.5",
+        name="GPT-5.5",
+        provider=LLMProviders.OPENAI,
+        input_token_price_usd=0.000005000,
+        output_token_price_usd=0.000030000,
+    )
+    GPT_5_5_PRO = LLMModelVersion(
+        id="gpt_5_5_pro",
+        api_id="gpt-5.5-pro",
+        name="GPT-5.5 Pro",
+        provider=LLMProviders.OPENAI,
+        input_token_price_usd=0.000030000,
+        output_token_price_usd=0.000180000,
     )
     GPT_5_MINI = LLMModelVersion(
         id="gpt_5_mini",

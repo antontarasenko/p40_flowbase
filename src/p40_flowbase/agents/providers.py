@@ -84,6 +84,12 @@ class AgentModels(Enum):
         name="Claude Opus 4.6",
         provider=AgentProviders.ANTHROPIC,
     )
+    CLAUDE_OPUS_4_7 = AgentModelVersion(
+        id="claude_opus_4_7",
+        api_id="claude-opus-4-7",
+        name="Claude Opus 4.7",
+        provider=AgentProviders.ANTHROPIC,
+    )
     CLAUDE_SONNET_4_5 = AgentModelVersion(
         id="claude_sonnet_4_5_20250929",
         api_id="claude-sonnet-4-5-20250929",
@@ -118,6 +124,18 @@ class AgentModels(Enum):
         id="gpt_5_4_mini",
         api_id="gpt-5.4-mini",
         name="GPT-5.4 Mini",
+        provider=AgentProviders.OPENAI,
+    )
+    GPT_5_5 = AgentModelVersion(
+        id="gpt_5_5",
+        api_id="gpt-5.5",
+        name="GPT-5.5",
+        provider=AgentProviders.OPENAI,
+    )
+    GPT_5_5_PRO = AgentModelVersion(
+        id="gpt_5_5_pro",
+        api_id="gpt-5.5-pro",
+        name="GPT-5.5 Pro",
         provider=AgentProviders.OPENAI,
     )
     GPT_5_MINI = AgentModelVersion(
