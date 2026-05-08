@@ -22,14 +22,11 @@ dependencies = [
     "aiohttp~=3.13.2",
     "aiolimiter~=1.2.1",
     "aiosqlite~=0.21.0",
-    "claude-agent-sdk==0.1.77",
     "dagster~=1.13.1",
     "duckdb~=1.5.2",
     "jinja2~=3.1.6",
     "joblib~=1.5.2",
-    "langgraph~=1.1.10",
     "matplotlib~=3.10.5",
-    "openai-agents~=0.17.0",
     "pyarrow~=22.0.0",
     "pydantic~=2.12.4",
     "pydantic-settings~=2.10.1",
@@ -38,13 +35,26 @@ dependencies = [
     "sqlmodel~=0.0.31",
 ]
 
+[project.optional-dependencies]
+# Agent SDKs and LangGraph evolve fast, so we do not
+# want to pin them in dependencies. Downstream users
+# can decide whether to pin or upgrade without waiting
+# on p40_flowbase.
+claude-agent-sdk = ["claude-agent-sdk>=0.1.77"]
+openai-agents = ["openai-agents>=0.17.0"]
+langgraph = ["langgraph>=1.1.10"]
+all = ["p40_flowbase[claude-agent-sdk,langgraph,openai-agents]"]
+
 [dependency-groups]
 dev = [
     "basedpyright~=1.39.3",
     "build~=1.3.0",
+    "claude-agent-sdk~=0.1.77",
     "dagster-dg-cli~=1.13.1",
     "dagster-webserver~=1.13.1",
+    "langgraph~=1.1.10",
     "mypy~=1.20.2",
+    "openai-agents~=0.17.0",
     "pyarrow-stubs>=20.0.0",
     "pytest-asyncio~=1.3.0",
     "pytest-xdist~=3.8.0",
