@@ -4,7 +4,7 @@ Module exports:
 
 - ``logger`` — the package-wide ``logging.Logger`` named ``p40_flowbase``.
 - ``object_log_context`` — context manager that, while active, attaches
-  a ``FileHandler`` for one ``DataObject``'s ``<object_stem>.log`` to
+  a ``FileHandler`` for one ``DataObject``'s ``<object_stem>.meta.log`` to
   the package logger and binds ``_current_object_stem`` so a per-handler
   ``Filter`` accepts only that object's records.
 
@@ -70,7 +70,7 @@ def object_log_context(
     :param object_stem: Unique key identifying the data object
         (``f"{id}-{version.value.id}"``).
     :type object_stem: str
-    :param local_dir: Directory where the ``<object_stem>.log`` file
+    :param local_dir: Directory where the ``<object_stem>.meta.log`` file
         lives. Created if missing.
     :type local_dir: pathlib.Path
     :param phase: One of ``"make"``, ``"convert"``, ``"delete"`` —
@@ -79,7 +79,7 @@ def object_log_context(
     """
     token = _current_object_stem.set(object_stem)
     local_dir.mkdir(parents=True, exist_ok=True)
-    log_path = local_dir / f"{object_stem}.log"
+    log_path = local_dir / f"{object_stem}.meta.log"
     handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
     handler.setFormatter(
         logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")

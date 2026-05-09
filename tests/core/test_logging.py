@@ -4,7 +4,7 @@
 Covers:
 
 - The per-object FileHandler is attached only during the lifecycle call
-  and writes to ``<local_dir>/<object_stem>.log`` in append mode.
+  and writes to ``<local_dir>/<object_stem>.meta.log`` in append mode.
 - Subclass ``_make_summary`` fields land in the ``make_summary`` line.
 - Concurrent ``make()`` calls (via ``asyncio.gather`` of
   ``asyncio.to_thread``) produce two log files, each holding **only**
@@ -101,7 +101,7 @@ class _LogComposite(Composite):
 
 
 def _read_log(obj: DataObject) -> str:
-    log_path = obj.local_dir / f"{obj.object_stem}.log"
+    log_path = obj.local_dir / f"{obj.object_stem}.meta.log"
     return log_path.read_text()
 
 

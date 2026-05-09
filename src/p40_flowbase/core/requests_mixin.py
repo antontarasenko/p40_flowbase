@@ -149,7 +149,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
         Per-object logging: wrapped in ``object_log_context`` so all
         ``_run_batch`` progress lines and the final ``make_summary`` (with
         DB-queried authoritative numbers from ``_summary_queries``) land
-        in ``<local_dir>/<object_stem>.log``.
+        in ``<local_dir>/<object_stem>.meta.log``.
         """
         await self.create_tables(replace=replace)
         # ``object_log_context`` requires local_dir to exist; create_tables already did.

@@ -113,7 +113,7 @@ class DataObject(ABC):
     Every ``make()`` / ``convert()`` / ``delete()`` call:
 
     1. Opens an ``object_log_context``: a per-object FileHandler at
-       ``<local_dir>/<object_stem>.log`` (append mode), filtered to
+       ``<local_dir>/<object_stem>.meta.log`` (append mode), filtered to
        only this object's records via a ``ContextVar``. Concurrent
        ``make()`` calls do not bleed into each other's files.
     2. Writes a single-line ``<phase>_summary | k=v ... path=<abs>``

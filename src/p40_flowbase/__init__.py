@@ -4,7 +4,7 @@ Pipelines are built from ``DataObject`` subclasses: ``Table``,
 ``Composite``, ``DB`` (with ``HTTPDB`` / ``LLMDB`` / ``AgentDB``
 mixins), ``Document``, ``Figure``, ``Model``. Every object exposes the
 same three-method lifecycle (``make`` / ``convert`` / ``delete``) and
-ships a per-object log file at ``<local_dir>/<object_stem>.log``.
+ships a per-object log file at ``<local_dir>/<object_stem>.meta.log``.
 Dagster asset wrappers are first-class: ``fb.asset(MyTable, …)`` turns
 any ``DataObject`` subclass into a partitioned, dependency-aware asset.
 
