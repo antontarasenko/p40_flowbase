@@ -472,7 +472,7 @@ WeatherAgentTaskExtra = fb.make_agent_task_extra_table(
 
 def _narrative_prompt(row: dict[str, Any]) -> str:
     """Render the agent prompt template for one summary row."""
-    return fb.render_sql_template(
+    return fb.render_jinja_template(
         template_name="weather_city_narrative_agent_db.md.jinja",
         package="p40_weather",
         subpath="resources/templates/prompts",

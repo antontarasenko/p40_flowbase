@@ -126,8 +126,7 @@ from p40_flowbase.dagster import (
 )
 from p40_flowbase.helpers import (
     extract_json_from_response,
-    render_prompt_template,
-    render_sql_template,
+    render_jinja_template,
     safe_path_component,
 )
 from p40_flowbase.http import (
@@ -212,7 +211,6 @@ __all__ = [
     "make_llm_request_extra_table",
     "make_llm_request_group_table",
     "partitions_from_versions",
-    "render_prompt_template",
-    "render_sql_template",
+    "render_jinja_template",
     "safe_path_component",
 ]

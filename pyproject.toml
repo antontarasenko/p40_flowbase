@@ -67,7 +67,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-p40_flowbase = ["py.typed", "prompts/*"]
+p40_flowbase = ["py.typed"]
 
 [tool.setuptools_scm]
 version_scheme = "no-guess-dev"

@@ -24,10 +24,8 @@ import pydantic as pyd
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.database import DB
 from p40_flowbase.core.formats import TableFormat
-from p40_flowbase.helpers.sql_templates import (
-    render_sql_template,
-    validate_arrow_against_pydantic,
-)
+from p40_flowbase.helpers.arrow_schema import validate_arrow_against_pydantic
+from p40_flowbase.helpers.jinja_templates import render_jinja_template
 
 
 class Table(DataObject):
@@ -185,7 +183,7 @@ class Table(DataObject):
 
         resolved_pkg = package or resolve_anchor_package(self)
         resolved_name = template_name or f"{self.id}.sql.jinja"
-        sql = render_sql_template(
+        sql = render_jinja_template(
             template_name=resolved_name,
             package=resolved_pkg,
             subpath=subpath,

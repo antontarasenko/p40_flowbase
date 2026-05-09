@@ -1,4 +1,4 @@
-"""Tests for `p40_flowbase.helpers.sql_templates` and the default
+"""Tests for `p40_flowbase.helpers.jinja_templates` and the default
 `Table._make` SQL-template path.
 
 Fixture templates live in
@@ -23,11 +23,11 @@ import pytest
 from p40_flowbase.core.base import DataObjectVersion
 from p40_flowbase.core.formats import TableFormat
 from p40_flowbase.core.table import Table
-from p40_flowbase.helpers.sql_templates import (
+from p40_flowbase.helpers.arrow_schema import (
     arrow_schema_from_pydantic,
-    render_sql_template,
     validate_arrow_against_pydantic,
 )
+from p40_flowbase.helpers.jinja_templates import render_jinja_template
 
 
 class _V(Enum):
@@ -85,11 +85,11 @@ class _BadSchemaWidgetsTable(Table):
     template_package = "sample_pkg"
 
 
-# ---------- render_sql_template -----------------------------------------
+# ---------- render_jinja_template -----------------------------------------
 
 
-def test_render_sql_template_loads_from_fixture_package():
-    sql = render_sql_template(
+def test_render_jinja_template_loads_from_fixture_package():
+    sql = render_jinja_template(
         "sample_widgets.sql.jinja",
         package="sample_pkg",
         third_value=99,
@@ -98,9 +98,9 @@ def test_render_sql_template_loads_from_fixture_package():
     assert "(3, 'gamma', 99)" in sql
 
 
-def test_render_sql_template_missing_template_raises():
+def test_render_jinja_template_missing_template_raises():
     with pytest.raises(FileNotFoundError):
-        render_sql_template("does_not_exist.sql.jinja", package="sample_pkg")
+        render_jinja_template("does_not_exist.sql.jinja", package="sample_pkg")
 
 
 # ---------- arrow_schema_from_pydantic ----------------------------------
