@@ -68,7 +68,7 @@ export LOCAL_DATA=/tmp/p40_weather_data         # default if unset
 export ANTHROPIC_API_KEY=sk-ant-...             # for the AgentDB step
 
 dg dev -m p40_weather.definitions                  # web UI, click "Materialize all"
-# …or one-shot:
+# ...or one-shot:
 dg launch -m p40_weather.definitions --select '*'
 ```
 
@@ -92,23 +92,29 @@ The pipeline ends with `weather_doc-main.md` (or `weather_doc-backfill_2025.md`)
 
 ## Pipeline overview
 
-| # | Class | Output | Notes |
-|---|---|---|---|
-| 1 | `WeatherHTTPDB(fb.HTTPDB)` | SQLite of HTTP requests + custom `WeatherHTTPRequestGroup` (per-run audit) + `WeatherHTTPRequestExtra` (per-request city metadata) | One row per `(version, city)` |
-| 2 | `WeatherResponseFiles(fb.Composite)` | One `<city>.json` per successful response | City name read from the join `HTTPRequest ⨝ WeatherHTTPRequestExtra`, no URL parsing |
-| 3 | `WeatherHourlyTable(fb.Table)` | Flat parquet `(city, ts_utc, temp_c, precip_mm)` | Python `_make` parses the JSON arrays |
-| 4 | `WeatherSummaryTable(fb.Table)` | Per-city min/mean/max temp + total precip | **`.sql.jinja` template** at `resources/templates/tables/weather_summary_table.sql.jinja` |
-| 5 | `WeatherCityNarrativeAgentDB(fb.AgentDB)` | One LLM task per city; one-sentence narrative | **`.md.jinja` prompt template** at `resources/templates/prompts/weather_city_narrative_agent_db.md.jinja`; `Models.CLAUDE_SONNET_4_6`; custom `WeatherAgentTaskGroup` / `WeatherAgentTaskExtra` |
-| 6 | `WeatherCityNarrativeTable(fb.TableFromDB)` | `(city, narrative, model_id, cost_usd)` parquet | Joined from `AgentTask ⨝ WeatherAgentTaskExtra` |
-| 7 | `WeatherFigure(fb.Figure)` | Bar chart of mean temps | matplotlib pickle |
-| 8 | `WeatherDoc(fb.Document)` | Markdown with summary table + LLM narratives + embedded SVG | Auto-converts the figure to SVG before embedding |
+| Class | Output | Notes |
+|---|---|---|
+| `WeatherVersionConfig(fb.Table)` | Two-column `(key, value)` parquet of the active `WeatherVersion`'s fields | Snapshot of version metadata at run time; auto-tracks new fields via `dataclasses.asdict`. |
+| `WeatherInputCities(fb.Table)` | `(name, latitude, longitude)` parquet | Reads `resources/versions/weather_versions/cities-<id>.tsv`. Lifting the catalog out of `WeatherVersions` keeps the enum import-time pure. |
+| `WeatherHTTPDB(fb.HTTPDB)` | SQLite of HTTP requests + custom `WeatherHTTPRequestGroup` (per-run audit) + `WeatherHTTPRequestExtra` (per-request city metadata) | One row per `(version, city)`; cities read from `WeatherInputCities(version).df` |
+| `WeatherResponseFiles(fb.Composite)` | One `<city>.json` per successful response | City name read from the join `HTTPRequest JOIN WeatherHTTPRequestExtra`, no URL parsing |
+| `WeatherHourlyTable(fb.Table)` | Flat parquet `(city, ts_utc, temp_c, precip_mm)` | Python `_make` parses the JSON arrays |
+| `WeatherSummaryTable(fb.Table)` | Per-city min/mean/max temp + total precip | **`.sql.jinja` template** at `resources/templates/tables/weather_summary_table.sql.jinja` |
+| `WeatherCityNarrativeAgentDB(fb.AgentDB)` | One LLM task per city; one-sentence narrative | **`.md.jinja` prompt template** at `resources/templates/prompts/weather_city_narrative_agent_db.md.jinja`; `Models.CLAUDE_SONNET_4_6`; custom `WeatherAgentTaskGroup` / `WeatherAgentTaskExtra` |
+| `WeatherCityNarrativeTable(fb.TableFromDB)` | `(city, narrative, model_id, cost_usd)` parquet | Joined from `AgentTask JOIN WeatherAgentTaskExtra` |
+| `WeatherFigure(fb.Figure)` | Bar chart of mean temps | matplotlib pickle |
+| `WeatherDoc(fb.Document)` | Markdown with summary table + LLM narratives + embedded SVG | Auto-converts the figure to SVG before embedding |
 
 Dagster DAG (from `definitions.py`):
 
 ```
-http_db → files → hourly → summary ─┬→ narrative_db → narrative ─┐
-                                    └→ figure ──────────────────→ doc
+version_config
+
+cities → http_db → files → hourly → summary ─┬→ narrative_db → narrative ─┐
+                                             └→ figure ──────────────────→ doc
 ```
+
+`version_config` is a leaf (no deps); it just persists the version snapshot alongside the rest of the run.
 
 ## Versions
 
@@ -121,11 +127,11 @@ Two versions are wired into `WeatherVersions`:
 
 Both share the same city catalog today; the cities live in TSVs at `resources/versions/weather_versions/cities-<id>.tsv`. To diverge them, edit one TSV; no Python code changes.
 
-To add a new version: append a `WeatherVersions.<NEW>` enum member with the version's `WeatherVersion(id="<x>", cities=_load_cities("<x>"), …)`, drop a `cities-<x>.tsv` next to the others, and Dagster picks up the new partition on next reload.
+To add a new version: append a `WeatherVersions.<NEW>` enum member with the version's `WeatherVersion(id="<x>", cities=_load_cities("<x>"), ...)`, drop a `cities-<x>.tsv` next to the others, and Dagster picks up the new partition on next reload.
 
 ## Schema metadata
 
-Every Pydantic field on `HourlyRow`, `SummaryRow`, `NarrativeRow` carries `title` / `description` / `examples` / `json_schema_extra={"units": …}`, so `model.model_json_schema()` yields a fully-annotated machine-readable schema:
+Every Pydantic field on `HourlyRow`, `SummaryRow`, `NarrativeRow` carries `title` / `description` / `examples` / `json_schema_extra={"units": ...}`, so `model.model_json_schema()` yields a fully-annotated machine-readable schema:
 
 ```json
 "temp_mean_c": {
@@ -147,7 +153,7 @@ PYTHONPATH=src pytest tests/
 
 The smoke tests mock the network at two seams:
 
-- `fb.HTTPDB._execute_http_request`: returns canned Open-Meteo JSON for the 5 cities × 3 hours.
+- `fb.HTTPDB._execute_http_request`: returns canned Open-Meteo JSON for the 5 cities x 3 hours.
 - `fb.AgentDB._execute_anthropic_agent`: returns a deterministic `"Mock narrative for task <uuid>."` with `total_cost_usd=0.0001`.
 
 That covers the whole pipeline end-to-end without API keys or network.

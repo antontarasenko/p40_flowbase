@@ -41,18 +41,21 @@ def test_imports():
         WeatherFigure,
         WeatherHourlyTable,
         WeatherHTTPDB,
+        WeatherInputCities,
         WeatherResponseFiles,
         WeatherSummaryTable,
         WeatherVersions,
     )
 
     assert defs is not None
-    assert len(WeatherVersions.MAIN.value.cities) == 5
     assert WeatherVersions.MAIN.value.forecast_days == 1
     assert WeatherVersions.BACKFILL_2025.value.forecast_days == 16
     assert build_forecast_url(latitude=0.0, longitude=0.0).startswith(
         "https://api.open-meteo.com/v1/forecast?"
     )
+    assert WeatherInputCities.id == "weather_input_cities"
+    from p40_weather.objects import WeatherVersionConfig
+    assert WeatherVersionConfig.id == "weather_version_config"
     assert WeatherHTTPDB.id == "weather_http_db"
     assert WeatherResponseFiles.id == "weather_response_files"
     assert WeatherHourlyTable.id == "weather_hourly_table"
@@ -70,14 +73,27 @@ def test_end_to_end_with_mocked_http(local_data):
         WeatherFigure,
         WeatherHourlyTable,
         WeatherHTTPDB,
+        WeatherInputCities,
         WeatherResponseFiles,
         WeatherSummaryTable,
         WeatherVersions,
     )
 
-    cities = WeatherVersions.MAIN.value.cities
+    # Materialize the cities catalog first; downstream stages read from it.
+    cities_obj = WeatherInputCities(WeatherVersions.MAIN)
+    cities_obj.make(replace=True)
+    assert cities_obj.df.num_rows == 5
+    assert sorted(cities_obj.df.column_names) == [
+        "latitude",
+        "longitude",
+        "name",
+    ]
+
     canned: dict[tuple[float, float], str] = {
-        (lat, lon): _canned_response(lat, lon) for _, lat, lon in cities
+        (row["latitude"], row["longitude"]): _canned_response(
+            row["latitude"], row["longitude"],
+        )
+        for row in cities_obj.df.to_pylist()
     }
 
     async def fake_execute_http_request(

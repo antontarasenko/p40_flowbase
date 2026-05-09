@@ -18,8 +18,10 @@ from p40_weather.objects import (
     WeatherFigure,
     WeatherHourlyTable,
     WeatherHTTPDB,
+    WeatherInputCities,
     WeatherResponseFiles,
     WeatherSummaryTable,
+    WeatherVersionConfig,
     WeatherVersions,
 )
 
@@ -37,7 +39,9 @@ common = {
     "version_enum_class": WeatherVersions,
 }
 
-http_db = fb.asset(WeatherHTTPDB, **common)
+version_config = fb.asset(WeatherVersionConfig, **common)
+cities = fb.asset(WeatherInputCities, **common)
+http_db = fb.asset(WeatherHTTPDB, deps=[cities], **common)
 files = fb.asset(WeatherResponseFiles, deps=[http_db], **common)
 hourly = fb.asset(WeatherHourlyTable, deps=[files], **common)
 summary = fb.asset(WeatherSummaryTable, deps=[hourly], **common)
@@ -56,6 +60,8 @@ doc = fb.asset(
 
 defs = dg.Definitions(
     assets=[
+        version_config,
+        cities,
         http_db,
         files,
         hourly,

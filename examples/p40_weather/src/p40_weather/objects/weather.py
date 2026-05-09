@@ -1,11 +1,4 @@
 """DataObject subclasses forming the p40_weather pipeline.
-
-Pipeline::
-
-    WeatherHTTPDB → WeatherResponseFiles → WeatherHourlyTable
-        → WeatherSummaryTable → WeatherCityNarrativeAgentDB
-            → WeatherCityNarrativeTable
-                → WeatherFigure / WeatherDoc
 """
 
 import csv
@@ -17,8 +10,8 @@ import pickle
 import uuid
 import warnings
 from dataclasses import (
+    asdict,
     dataclass,
-    field,
 )
 from enum import Enum
 from typing import (
@@ -44,45 +37,17 @@ from p40_weather.helpers import build_forecast_url
 class WeatherVersion(fb.DataObjectVersion):
     """Per-version pipeline parameters.
 
-    :ivar cities: ``(name, latitude, longitude)`` tuples to fetch.
-    :vartype cities: tuple[tuple[str, float, float], ...]
+    Holds only declarative knobs. The per-version city catalog lives
+    in its own ``DataObject`` (``WeatherInputCities``) sourced from
+    ``resources/versions/weather_versions/cities-<id>.tsv``, so this
+    enum stays import-time pure and trivially serializable.
+
     :ivar forecast_days: Number of forecast days requested per city
         (Open-Meteo accepts 1..16).
     :vartype forecast_days: int
     """
 
-    cities: tuple[tuple[str, float, float], ...] = field(default=())
     forecast_days: int = 1
-
-
-def _load_cities(version_id: str) -> tuple[tuple[str, float, float], ...]:
-    """Load ``(name, lat, lon)`` tuples from a versioned TSV resource.
-
-    Reads ``p40_weather/resources/versions/weather_versions/cities-<version_id>.tsv``
-    via ``importlib.resources``. The TSV must have a header row
-    ``name<TAB>latitude<TAB>longitude``.
-
-    :param version_id: ``WeatherVersion.id`` (matches the TSV stem after
-        the ``cities-`` prefix).
-    :type version_id: str
-    :returns: Immutable tuple of ``(name, latitude, longitude)`` rows.
-    :rtype: tuple[tuple[str, float, float], ...]
-    """
-    text = (
-        importlib.resources.files("p40_weather")
-        .joinpath(
-            "resources",
-            "versions",
-            "weather_versions",
-            f"cities-{version_id}.tsv",
-        )
-        .read_text(encoding="utf-8")
-    )
-    reader = csv.reader(io.StringIO(text), delimiter="\t")
-    next(reader)  # header
-    return tuple(
-        (row[0], float(row[1]), float(row[2])) for row in reader if row
-    )
 
 
 class WeatherVersions(Enum):
@@ -92,14 +57,12 @@ class WeatherVersions(Enum):
         id="main",
         name="main",
         description="5 cities, single-day hourly forecast.",
-        cities=_load_cities("main"),
         forecast_days=1,
     )
     BACKFILL_2025 = WeatherVersion(
         id="backfill_2025",
         name="2025 backfill",
         description="Same 5 cities, max-horizon (16-day) forecast.",
-        cities=_load_cities("backfill_2025"),
         forecast_days=16,
     )
 
@@ -118,117 +81,119 @@ def _wv(version: Enum) -> WeatherVersion:
         raise TypeError(msg)
     return value
 
+
 ################################################################################
-# Pydantic row schemas
+# Version key-value snapshot Table
 ################################################################################
 
 
-class HourlyRow(pyd.BaseModel):
-    """One hour of weather for one city.
+class VersionConfigRow(pyd.BaseModel):
+    """One key-value row of a ``WeatherVersion``'s fields."""
 
-    Field metadata follows the project's convention: ``title`` /
-    ``description`` / ``examples`` are JSON-Schema-standard,
-    ``json_schema_extra={"units": ...}`` carries machine-readable
-    units for downstream tooling.
+    key: str = pyd.Field(
+        title="Field name",
+        description="Name of a ``WeatherVersion`` dataclass field.",
+        examples=["id", "forecast_days"],
+    )
+    value: str = pyd.Field(
+        title="Field value",
+        description=(
+            "Stringified field value (every column is ``str`` so the "
+            "schema stays uniform across heterogeneous field types)."
+        ),
+        examples=["main", "16"],
+    )
+
+
+class WeatherVersionConfig(fb.Table):
+    """Snapshot of the active ``WeatherVersion``'s fields as key-value rows.
+
+    Useful for downstream debugging and audit: persists what the version
+    metadata looked like at run time, in the same parquet folder layout
+    as the rest of the pipeline. Picks up new ``WeatherVersion`` fields
+    automatically because it iterates ``dataclasses.asdict``.
     """
 
-    city: str = pyd.Field(
+    id: ClassVar[str] = "weather_version_config"
+    description: ClassVar[str] = "Active WeatherVersion fields, key-value rows."
+    supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
+    row_schema: ClassVar[type[pyd.BaseModel]] = VersionConfigRow
+
+    @override
+    def _make(self) -> None:
+        wv = _wv(self.version)
+        rows = [{"key": k, "value": str(v)} for k, v in asdict(wv).items()]
+        self.save_arrow(pa.Table.from_pylist(rows))
+
+
+################################################################################
+# Input cities Table (loaded from a versioned TSV resource)
+################################################################################
+
+
+def _load_cities(version_id: str) -> list[dict[str, float | str]]:
+    """Read ``cities-<version_id>.tsv`` from package resources."""
+    text = (
+        importlib.resources.files("p40_weather")
+        .joinpath(
+            "resources",
+            "versions",
+            "weather_versions",
+            f"cities-{version_id}.tsv",
+        )
+        .read_text(encoding="utf-8")
+    )
+    reader = csv.reader(io.StringIO(text), delimiter="\t")
+    next(reader)  # header
+    return [
+        {"name": row[0], "latitude": float(row[1]), "longitude": float(row[2])}
+        for row in reader
+        if row
+    ]
+
+
+class CityRow(pyd.BaseModel):
+    """One city in the per-version input catalog."""
+
+    name: str = pyd.Field(
         title="City name",
-        description="Human-readable city name (matches the version's TSV).",
+        description="Human-readable city name.",
         examples=["Los Angeles", "Tokyo"],
     )
-    ts_utc: _dt.datetime = pyd.Field(
-        title="Observation timestamp",
-        description="Hourly observation timestamp in UTC.",
-        examples=[_dt.datetime(2026, 1, 1, 0, 0, tzinfo=_dt.UTC)],
+    latitude: float = pyd.Field(
+        title="Latitude",
+        description="Decimal-degrees latitude (WGS84).",
+        examples=[34.0522, -33.9249],
+        json_schema_extra={"units": "deg"},
     )
-    temp_c: float = pyd.Field(
-        title="Air temperature",
-        description="Air temperature 2 m above ground at this hour.",
-        examples=[5.0, 15.5, -3.2],
-        json_schema_extra={"units": "degC"},
-    )
-    precip_mm: float = pyd.Field(
-        title="Precipitation",
-        description="Liquid-equivalent precipitation accumulated over the hour.",
-        examples=[0.0, 0.4, 12.7],
-        json_schema_extra={"units": "mm"},
+    longitude: float = pyd.Field(
+        title="Longitude",
+        description="Decimal-degrees longitude (WGS84).",
+        examples=[-118.2437, 18.4241],
+        json_schema_extra={"units": "deg"},
     )
 
 
-class SummaryRow(pyd.BaseModel):
-    """Per-city aggregate over the hourly window.
+class WeatherInputCities(fb.Table):
+    """Per-version city catalog, materialized from the TSV resource.
 
-    Field metadata follows the project's convention: ``title`` /
-    ``description`` / ``examples`` are JSON-Schema-standard,
-    ``json_schema_extra={"units": ...}`` carries machine-readable
-    units for downstream tooling.
+    Reads ``resources/versions/weather_versions/cities-<id>.tsv`` and
+    writes a parquet validated against ``CityRow``. Lifting the catalog
+    into its own ``DataObject`` keeps ``WeatherVersions`` import-time
+    pure (no disk IO at class-body evaluation) and gives downstream
+    stages a single source of truth they can ``.df``-read like any
+    other parquet.
     """
 
-    city: str = pyd.Field(
-        title="City name",
-        description="Human-readable city name (matches the version's TSV).",
-        examples=["Los Angeles", "Tokyo"],
-    )
-    temp_min_c: float = pyd.Field(
-        title="Minimum temperature",
-        description="Lowest hourly air temperature observed in the window.",
-        examples=[-5.1, 3.0],
-        json_schema_extra={"units": "degC"},
-    )
-    temp_mean_c: float = pyd.Field(
-        title="Mean temperature",
-        description="Arithmetic mean of hourly air temperatures.",
-        examples=[7.4, 22.1],
-        json_schema_extra={"units": "degC"},
-    )
-    temp_max_c: float = pyd.Field(
-        title="Maximum temperature",
-        description="Highest hourly air temperature observed in the window.",
-        examples=[12.8, 31.0],
-        json_schema_extra={"units": "degC"},
-    )
-    precip_total_mm: float = pyd.Field(
-        title="Total precipitation",
-        description="Sum of liquid-equivalent precipitation over the window.",
-        examples=[0.0, 4.2, 88.6],
-        json_schema_extra={"units": "mm"},
-    )
+    id: ClassVar[str] = "weather_input_cities"
+    description: ClassVar[str] = "Per-version (name, latitude, longitude) catalog."
+    supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
+    row_schema: ClassVar[type[pyd.BaseModel]] = CityRow
 
-
-class NarrativeRow(pyd.BaseModel):
-    """One LLM-written narrative for one city.
-
-    Field metadata follows the project's convention: ``title`` /
-    ``description`` / ``examples`` are JSON-Schema-standard,
-    ``json_schema_extra={"units": ...}`` carries machine-readable
-    units for downstream tooling.
-    """
-
-    city: str = pyd.Field(
-        title="City name",
-        description="Human-readable city name (matches the version's TSV).",
-        examples=["Los Angeles", "Tokyo"],
-    )
-    narrative: str = pyd.Field(
-        title="Narrative sentence",
-        description="One-sentence weather narrative produced by the agent.",
-        examples=[
-            "Los Angeles saw mild conditions with temperatures from "
-            "12 to 25 °C and negligible precipitation.",
-        ],
-    )
-    model_id: str = pyd.Field(
-        title="Model id",
-        description="Stable id of the ``fb.ModelVersion`` that wrote the narrative.",
-        examples=["claude_sonnet_4_6"],
-    )
-    cost_usd: float = pyd.Field(
-        title="Actual cost",
-        description="Actual USD cost reported by the agent SDK.",
-        examples=[0.0001, 0.0023],
-        json_schema_extra={"units": "usd"},
-    )
+    @override
+    def _make(self) -> None:
+        rows = _load_cities(self.version.value.id)
+        self.save_arrow(pa.Table.from_pylist(rows))
 
 
 ################################################################################
@@ -284,6 +249,8 @@ class WeatherHTTPDB(fb.HTTPDB):
 
     async def _populate_http_requests(self) -> uuid.UUID:
         wv = _wv(self.version)
+        cities_df = WeatherInputCities(self.version).df
+        cities_rows: list[dict[str, Any]] = cities_df.to_pylist()
         group_id = uuid.uuid4()
         async with self.session_factory() as session:
             session.add(
@@ -292,10 +259,13 @@ class WeatherHTTPDB(fb.HTTPDB):
                     created_by_class=type(self).__name__,
                     version_id=wv.id,
                     forecast_days=wv.forecast_days,
-                    cities_count=len(wv.cities),
+                    cities_count=len(cities_rows),
                 )
             )
-            for name, lat, lon in wv.cities:
+            for row in cities_rows:
+                name = row["name"]
+                lat = row["latitude"]
+                lon = row["longitude"]
                 extra_id = uuid.uuid4()
                 session.add(
                     WeatherHTTPRequestExtra(  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
@@ -385,6 +355,39 @@ class WeatherResponseFiles(fb.Composite):
 ################################################################################
 
 
+class HourlyRow(pyd.BaseModel):
+    """One hour of weather for one city.
+
+    Field metadata follows the project's convention: ``title`` /
+    ``description`` / ``examples`` are JSON-Schema-standard,
+    ``json_schema_extra={"units": ...}`` carries machine-readable
+    units for downstream tooling.
+    """
+
+    city: str = pyd.Field(
+        title="City name",
+        description="Human-readable city name (matches the version's TSV).",
+        examples=["Los Angeles", "Tokyo"],
+    )
+    ts_utc: _dt.datetime = pyd.Field(
+        title="Observation timestamp",
+        description="Hourly observation timestamp in UTC.",
+        examples=[_dt.datetime(2026, 1, 1, 0, 0, tzinfo=_dt.UTC)],
+    )
+    temp_c: float = pyd.Field(
+        title="Air temperature",
+        description="Air temperature 2 m above ground at this hour.",
+        examples=[5.0, 15.5, -3.2],
+        json_schema_extra={"units": "degC"},
+    )
+    precip_mm: float = pyd.Field(
+        title="Precipitation",
+        description="Liquid-equivalent precipitation accumulated over the hour.",
+        examples=[0.0, 0.4, 12.7],
+        json_schema_extra={"units": "mm"},
+    )
+
+
 class WeatherHourlyTable(fb.Table):
     """Hourly long-form table built from the per-city JSON files."""
 
@@ -424,6 +427,46 @@ class WeatherHourlyTable(fb.Table):
 ################################################################################
 # Summary Table via .sql.jinja
 ################################################################################
+
+
+class SummaryRow(pyd.BaseModel):
+    """Per-city aggregate over the hourly window.
+
+    Field metadata follows the project's convention: ``title`` /
+    ``description`` / ``examples`` are JSON-Schema-standard,
+    ``json_schema_extra={"units": ...}`` carries machine-readable
+    units for downstream tooling.
+    """
+
+    city: str = pyd.Field(
+        title="City name",
+        description="Human-readable city name (matches the version's TSV).",
+        examples=["Los Angeles", "Tokyo"],
+    )
+    temp_min_c: float = pyd.Field(
+        title="Minimum temperature",
+        description="Lowest hourly air temperature observed in the window.",
+        examples=[-5.1, 3.0],
+        json_schema_extra={"units": "degC"},
+    )
+    temp_mean_c: float = pyd.Field(
+        title="Mean temperature",
+        description="Arithmetic mean of hourly air temperatures.",
+        examples=[7.4, 22.1],
+        json_schema_extra={"units": "degC"},
+    )
+    temp_max_c: float = pyd.Field(
+        title="Maximum temperature",
+        description="Highest hourly air temperature observed in the window.",
+        examples=[12.8, 31.0],
+        json_schema_extra={"units": "degC"},
+    )
+    precip_total_mm: float = pyd.Field(
+        title="Total precipitation",
+        description="Sum of liquid-equivalent precipitation over the window.",
+        examples=[0.0, 4.2, 88.6],
+        json_schema_extra={"units": "mm"},
+    )
 
 
 class WeatherSummaryTable(fb.Table):
@@ -548,6 +591,41 @@ class WeatherCityNarrativeAgentDB(fb.AgentDB):
 ################################################################################
 # TableFromDB: narratives joined to cities
 ################################################################################
+
+
+class NarrativeRow(pyd.BaseModel):
+    """One LLM-written narrative for one city.
+
+    Field metadata follows the project's convention: ``title`` /
+    ``description`` / ``examples`` are JSON-Schema-standard,
+    ``json_schema_extra={"units": ...}`` carries machine-readable
+    units for downstream tooling.
+    """
+
+    city: str = pyd.Field(
+        title="City name",
+        description="Human-readable city name (matches the version's TSV).",
+        examples=["Los Angeles", "Tokyo"],
+    )
+    narrative: str = pyd.Field(
+        title="Narrative sentence",
+        description="One-sentence weather narrative produced by the agent.",
+        examples=[
+            "Los Angeles saw mild conditions with temperatures from "
+            "12 to 25 °C and negligible precipitation.",
+        ],
+    )
+    model_id: str = pyd.Field(
+        title="Model id",
+        description="Stable id of the ``fb.ModelVersion`` that wrote the narrative.",
+        examples=["claude_sonnet_4_6"],
+    )
+    cost_usd: float = pyd.Field(
+        title="Actual cost",
+        description="Actual USD cost reported by the agent SDK.",
+        examples=[0.0001, 0.0023],
+        json_schema_extra={"units": "usd"},
+    )
 
 
 class WeatherCityNarrativeTable(fb.TableFromDB[WeatherCityNarrativeAgentDB]):

@@ -6,33 +6,41 @@ the Dagster ``definitions``.
 """
 
 from p40_weather.objects.weather import (
+    CityRow,
     HourlyRow,
     NarrativeRow,
     SummaryRow,
+    VersionConfigRow,
     WeatherCityNarrativeAgentDB,
     WeatherCityNarrativeTable,
     WeatherDoc,
     WeatherFigure,
     WeatherHourlyTable,
     WeatherHTTPDB,
+    WeatherInputCities,
     WeatherResponseFiles,
     WeatherSummaryTable,
     WeatherVersion,
+    WeatherVersionConfig,
     WeatherVersions,
 )
 
 __all__ = [
+    "CityRow",
     "HourlyRow",
     "NarrativeRow",
     "SummaryRow",
+    "VersionConfigRow",
     "WeatherCityNarrativeAgentDB",
     "WeatherCityNarrativeTable",
     "WeatherDoc",
     "WeatherFigure",
     "WeatherHTTPDB",
     "WeatherHourlyTable",
+    "WeatherInputCities",
     "WeatherResponseFiles",
     "WeatherSummaryTable",
     "WeatherVersion",
+    "WeatherVersionConfig",
     "WeatherVersions",
 ]
