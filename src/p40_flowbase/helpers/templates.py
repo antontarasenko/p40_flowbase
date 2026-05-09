@@ -19,19 +19,22 @@ def render_prompt_template(
 ) -> str:
     """Render a Jinja template from a prompts directory.
 
-    Searches for the template in the project package first (if provided),
-    then falls back to p40_flowbase.prompts.
+    Searches for the template in the project package first (if
+    provided), then falls back to ``p40_flowbase.prompts``.
 
-    Args:
-        template_name: Name of the template file in the prompts directory.
-        project_package: Package path containing prompts (e.g., "myproject.prompts").
-            If provided, searches here first before falling back to base package.
-        **kwargs: Variables to pass to the template.
+    :param template_name: Name of the template file in the prompts
+        directory.
+    :type template_name: str
+    :param project_package: Package path containing prompts
+        (e.g. ``"myproject.prompts"``). If provided, searches here
+        first before falling back to the base package.
+    :type project_package: str | None
+    :param kwargs: Variables passed to the template.
+    :returns: Rendered template as a string.
+    :rtype: str
 
-    Returns:
-        Rendered template as string.
+    Example::
 
-    Example:
         rendered = render_prompt_template(
             template_name="extraction.md.jinja",
             project_package="myproject.prompts",

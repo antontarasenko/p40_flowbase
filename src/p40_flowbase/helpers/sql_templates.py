@@ -190,15 +190,20 @@ def render_sql_template(
 ) -> str:
     """Render ``<package>/<subpath>/<template_name>`` with Jinja2.
 
-    Args:
-        template_name: Template file name, e.g. ``"widgets.sql.jinja"``.
-        package: Anchor Python package; the loader walks
-            ``importlib.resources.files(package).joinpath(subpath, template_name)``.
-            ``subpath`` does **not** require ``__init__.py`` files —
-            only ``package`` itself must be a real Python package.
-        subpath: Directory inside ``package`` holding the templates.
-            Defaults to the project convention.
-        **template_vars: Variables passed into the Jinja render call.
+    :param template_name: Template file name, e.g.
+        ``"widgets.sql.jinja"``.
+    :type template_name: str
+    :param package: Anchor Python package; the loader walks
+        ``importlib.resources.files(package).joinpath(subpath, template_name)``.
+        ``subpath`` does **not** require ``__init__.py`` files — only
+        ``package`` itself must be a real Python package.
+    :type package: str
+    :param subpath: Directory inside ``package`` holding the templates.
+        Defaults to the project convention.
+    :type subpath: str
+    :param template_vars: Variables passed into the Jinja render call.
+    :returns: Rendered SQL.
+    :rtype: str
     """
     root = importlib.resources.files(package)
     template_content = root.joinpath(subpath, template_name).read_text()

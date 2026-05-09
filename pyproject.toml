@@ -67,7 +67,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-p40_flowbase = ["py.typed", "prompts/*", "templates/*"]
+p40_flowbase = ["py.typed", "prompts/*"]
 
 [tool.setuptools_scm]
 version_scheme = "no-guess-dev"
@@ -156,7 +156,7 @@ ignore = [
 "tests/**/*.py" = ["S101", "PLR2004", "ANN", "SLF001", "ARG", "RUF012"]
 
 [tool.ruff.lint.pydocstyle]
-convention = "google"
+convention = "pep257"
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

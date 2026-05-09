@@ -1,0 +1,14 @@
+You are writing a one-sentence weather narrative for a daily city report.
+
+City: {{ city }}
+
+Hourly aggregates for the last reporting window:
+
+- Minimum temperature: {{ "%.1f"|format(temp_min_c) }} °C
+- Mean temperature: {{ "%.1f"|format(temp_mean_c) }} °C
+- Maximum temperature: {{ "%.1f"|format(temp_max_c) }} °C
+- Total precipitation: {{ "%.1f"|format(precip_total_mm) }} mm
+
+Write exactly one sentence (≤ 30 words) describing the weather. Mention
+the temperature range and whether precipitation was meaningful. Do not
+add headings, bullet points, or extra commentary — only the sentence.

@@ -56,13 +56,13 @@ STYLES: dict[str, dict[str, Any]] = {
 def apply_style(style_name: str = "style_1") -> None:
     """Apply matplotlib style settings.
 
-    Args:
-        style_name: Name of the style to apply from STYLES dict.
+    :param style_name: Name of the style to apply from the ``STYLES``
+        dict.
+    :type style_name: str
+    :raises KeyError: If ``style_name`` is not found in ``STYLES``.
 
-    Raises:
-        KeyError: If style_name is not found in STYLES.
+    Example::
 
-    Example:
         from p40_flowbase.styles import apply_style
         apply_style("style_1")
     """

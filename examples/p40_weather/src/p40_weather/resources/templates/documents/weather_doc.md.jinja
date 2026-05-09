@@ -1,0 +1,20 @@
+# Weather summary — {{ run_date }}
+
+Pipeline output for the `p40_weather` example: per-city aggregates of
+hourly Open-Meteo forecasts.
+
+## Per-city summary
+
+{{ summary_table }}
+
+## Per-city narrative (LLM-written)
+
+{% for n in narratives %}
+- **{{ n.city }}**: {{ n.narrative }}
+{% endfor %}
+
+## Mean temperature by city
+
+<div>
+{{ figure_svg }}
+</div>

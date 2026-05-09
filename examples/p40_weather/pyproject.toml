@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "p40_weather"
+version = "0.1.0"
+description = "Worked example: weather pipeline on top of p40_flowbase."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [
+    {name = "Anton Tarasenko"},
+]
+dependencies = [
+    "p40_flowbase",
+    # Pin `project.optional-dependencies` from p40_flowbase here (not via
+    # p40_flowbase[...]). p40_flowbase deliberately leaves certain
+    # dependencies unpinned so each downstream project picks its own
+    # version. p40_weather uses Models.CLAUDE_SONNET_4_6, so we need
+    # claude-agent-sdk. You can pin with `==` for reproducibility.
+    "claude-agent-sdk==0.1.80",
+    # Dagster runtime tooling (for convenience)
+    "dagster-dg-cli~=1.13.1",
+    "dagster-webserver~=1.13.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+p40_weather = [
+    "py.typed",
+    "resources/templates/documents/*.md.jinja",
+    "resources/templates/prompts/*.md.jinja",
+    "resources/templates/tables/*.sql.jinja",
+    "resources/versions/weather_versions/*.tsv",
+]

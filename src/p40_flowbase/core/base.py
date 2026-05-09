@@ -55,15 +55,34 @@ from p40_flowbase.logging import (
 class DataObjectVersion:
     """Version metadata for data objects.
 
-    Attributes:
-        id: Short identifier for the version (e.g., "main", "v1", "test").
-        name: Human-readable name for the version.
-        description: Detailed description of what this version contains.
+    :ivar id: Short identifier for the version (e.g., "main", "v1", "test").
+    :vartype id: str
+    :ivar name: Human-readable name for the version.
+    :vartype name: str
+    :ivar description: Detailed description of what this version contains.
+    :vartype description: str
     """
 
     id: str
     name: str
     description: str
+
+
+def resolve_anchor_package(obj: "DataObject") -> str:
+    """Return the anchor Python package for resource lookup.
+
+    Honors a ``template_package`` ClassVar on the subclass when set;
+    otherwise falls back to the top-level package of the subclass
+    module (e.g. ``their_pkg`` for ``their_pkg.objects.foo.MyTable``).
+    Used by both ``Table.make_via_sql_template`` and
+    ``Document._render_template`` to anchor ``importlib.resources``
+    lookups.
+    """
+    cls = type(obj)
+    pkg: str | None = getattr(cls, "template_package", None)
+    if pkg is not None:
+        return pkg
+    return cls.__module__.split(".")[0]
 
 
 def format_summary(phase: str, kvs: dict[str, Any]) -> str:
@@ -116,11 +135,9 @@ class DataObject(ABC):
     def __init__(self, version: Enum):
         """Initialize a data object with a specific version.
 
-        Args:
-            version: Version enum member from supported_versions.
-
-        Raises:
-            ValueError: If version is not in supported_versions.
+        :param version: Version enum member from ``supported_versions``.
+        :type version: Enum
+        :raises ValueError: If ``version`` is not in ``supported_versions``.
         """
         if version not in self.supported_versions:
             raise ValueError(
@@ -133,10 +150,10 @@ class DataObject(ABC):
     def set_local_data(cls, path: str) -> None:
         """Set the base directory for data storage.
 
-        This must be called before using any DataObject subclass.
+        Must be called before using any ``DataObject`` subclass.
 
-        Args:
-            path: Path to the directory where data objects will be stored.
+        :param path: Directory where data objects will be stored.
+        :type path: str
         """
         cls._local_data = path
 
@@ -144,8 +161,9 @@ class DataObject(ABC):
     def local_data(self) -> str:
         """Return the base directory for data storage.
 
-        Raises:
-            RuntimeError: If local_data has not been set.
+        :returns: Configured local data root.
+        :rtype: str
+        :raises RuntimeError: If ``local_data`` has not been set.
         """
         if self._local_data is None:
             raise RuntimeError(
@@ -167,19 +185,18 @@ class DataObject(ABC):
     def path_to_format(self, fmt: StrEnum) -> pathlib.Path:
         """Return path for a given format.
 
-        Args:
-            fmt: Format enum specifying the output format.
-
-        Returns:
-            Path to the file or directory for this format.
+        :param fmt: Format enum specifying the output format.
+        :type fmt: StrEnum
+        :returns: Path to the file or directory for this format.
+        :rtype: pathlib.Path
         """
         return self.local_dir / f"{self.object_stem}.{fmt.value}"
 
     def exists(self) -> bool:
         """Check whether the master copy of this data object exists.
 
-        Returns:
-            True if the master copy file or directory exists, False otherwise.
+        :returns: ``True`` if the master copy file or directory exists.
+        :rtype: bool
         """
         return self.path_to_format(self.make_format).exists()
 
@@ -198,8 +215,10 @@ class DataObject(ABC):
     def _convert_formats(self, formats_to_create: Sequence[StrEnum]) -> None:
         """Run each format's conversion method and log a per-format summary.
 
-        Raises:
-            NotImplementedError: If conversion method not found.
+        :param formats_to_create: Format enums to materialize.
+        :type formats_to_create: Sequence[StrEnum]
+        :raises NotImplementedError: If a ``_convert_to_<fmt>`` method
+            is not defined on the subclass.
         """
         for fmt in formats_to_create:
             if fmt == self.make_format:
@@ -264,13 +283,12 @@ class DataObject(ABC):
     def make(self, replace: bool = False) -> None:
         """Create the master copy of the object in the default format.
 
-        Args:
-            replace: If True, delete existing master copy and all format
-                copies, then create master copy anew. If False, raise
-                error if master copy already exists.
-
-        Raises:
-            FileExistsError: If master copy exists and replace=False.
+        :param replace: If ``True``, delete existing master copy and
+            all format copies, then create the master copy anew. If
+            ``False``, raise when the master copy already exists.
+        :type replace: bool
+        :raises FileExistsError: If master copy exists and
+            ``replace=False``.
         """
         if self.exists() and not replace:
             raise FileExistsError(
@@ -308,16 +326,16 @@ class DataObject(ABC):
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:
         """Create a copy of the object in a supported format using the master copy.
 
-        Args:
-            fmt: Format to save (StrEnum). If None, saves in all supported formats
-                (excluding the default format).
-            replace: If True, delete existing copy and recreate. If False, raise
-                error if copy already exists.
-
-        Raises:
-            FileNotFoundError: If master copy doesn't exist.
-            FileExistsError: If format copy exists and replace=False.
-            ValueError: If fmt is not a supported format.
+        :param fmt: Format to save. If ``None``, saves in all supported
+            formats (excluding the default format).
+        :type fmt: StrEnum | None
+        :param replace: If ``True``, delete existing copy and recreate.
+            If ``False``, raise when copy already exists.
+        :type replace: bool
+        :raises FileNotFoundError: If master copy doesn't exist.
+        :raises FileExistsError: If a format copy exists and
+            ``replace=False``.
+        :raises ValueError: If ``fmt`` is not a supported format.
         """
         if not self.exists():
             raise FileNotFoundError(

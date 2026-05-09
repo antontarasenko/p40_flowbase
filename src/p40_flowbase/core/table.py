@@ -135,12 +135,13 @@ class Table(DataObject):
         should call it instead of ``pq.write_table`` directly so the
         schema check is never skipped by accident.
 
-        Args:
-            arrow: PyArrow table to persist.
-            validate: When True (default), raise ``ValueError`` if the
-                Arrow schema does not match ``row_schema``. Set to
-                False only for performance-sensitive paths where you
-                have already validated upstream.
+        :param arrow: PyArrow table to persist.
+        :type arrow: pa.Table
+        :param validate: When ``True`` (default), raise ``ValueError``
+            if the Arrow schema does not match ``row_schema``. Set to
+            ``False`` only for performance-sensitive paths where you
+            have already validated upstream.
+        :type validate: bool
         """
         if validate:
             validate_arrow_against_pydantic(
@@ -161,24 +162,28 @@ class Table(DataObject):
         """Render → execute → validate → write the master parquet file.
 
         Convention defaults:
-            - ``template_name`` defaults to ``f"{self.id}.sql.jinja"``.
-            - ``package`` defaults to ``self.template_package`` if set,
-              otherwise the top-level Python package of the ``Table``
-              subclass (``type(self).__module__.split(".")[0]``).
 
-        Args:
-            template_name: Override the convention-derived template name.
-            package: Override the convention-derived anchor package.
-            subpath: Override the convention-derived template subpath.
-            template_vars: Variables passed into the Jinja render.
-            duckdb_setup: Optional callback to register UDFs, attach
-                databases, or configure the connection before the
-                template SQL executes.
+        - ``template_name`` defaults to ``f"{self.id}.sql.jinja"``.
+        - ``package`` defaults to ``self.template_package`` if set,
+          otherwise the top-level Python package of the ``Table``
+          subclass (``type(self).__module__.split(".")[0]``).
+
+        :param template_name: Override the convention-derived template name.
+        :type template_name: str | None
+        :param package: Override the convention-derived anchor package.
+        :type package: str | None
+        :param subpath: Override the convention-derived template subpath.
+        :type subpath: str
+        :param template_vars: Variables passed into the Jinja render.
+        :type template_vars: dict[str, Any] | None
+        :param duckdb_setup: Optional callback to register UDFs, attach
+            databases, or configure the connection before the template
+            SQL executes.
+        :type duckdb_setup: Callable[[duckdb.DuckDBPyConnection], None] | None
         """
-        cls = type(self)
-        resolved_pkg = (
-            package or cls.template_package or cls.__module__.split(".")[0]
-        )
+        from p40_flowbase.core.base import resolve_anchor_package
+
+        resolved_pkg = package or resolve_anchor_package(self)
         resolved_name = template_name or f"{self.id}.sql.jinja"
         sql = render_sql_template(
             template_name=resolved_name,

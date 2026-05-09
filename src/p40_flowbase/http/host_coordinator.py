@@ -62,15 +62,21 @@ class CoordinatorState:
 class HostCoordinator:
     """Coordinate rate-limited retries against a single host.
 
-    Args:
-        rate_period: Minimum seconds between consecutive requests.
-        server_error_codes: Status codes treated as server-wide outages.
-            Defaults to ``{429, 502, 503, 504}``. ``None`` response statuses
-            (connection errors) are always treated as server-wide.
-        max_outage: Maximum cumulative outage seconds before giving up.
-        base_backoff: Initial backoff duration in seconds.
-        max_backoff: Ceiling for exponential backoff in seconds.
-        name: Human-readable label used in log messages.
+    :param rate_period: Minimum seconds between consecutive requests.
+    :type rate_period: float
+    :param server_error_codes: Status codes treated as server-wide
+        outages. Defaults to ``{429, 502, 503, 504}``. ``None``
+        response statuses (connection errors) are always treated as
+        server-wide.
+    :type server_error_codes: Iterable[int] | None
+    :param max_outage: Maximum cumulative outage seconds before giving up.
+    :type max_outage: float
+    :param base_backoff: Initial backoff duration in seconds.
+    :type base_backoff: float
+    :param max_backoff: Ceiling for exponential backoff in seconds.
+    :type max_backoff: float
+    :param name: Human-readable label used in log messages.
+    :type name: str
     """
 
     def __init__(
@@ -139,9 +145,9 @@ class HostCoordinator:
     async def wait_for_availability(self) -> bool:
         """Sleep until the current backoff window expires.
 
-        Returns:
-            True if the caller should retry,
-            False if cumulative outage exceeded ``max_outage`` (give up).
+        :returns: ``True`` if the caller should retry; ``False`` if
+            cumulative outage exceeded ``max_outage`` (give up).
+        :rtype: bool
         """
         now = time.monotonic()
         sleep_duration = self._unavailable_until - now

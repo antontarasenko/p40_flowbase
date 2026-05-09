@@ -22,31 +22,58 @@ from jinja2 import (
     FileSystemLoader,
 )
 
-from p40_flowbase.core.base import DataObject
+from p40_flowbase.core.base import (
+    DataObject,
+    resolve_anchor_package,
+)
 from p40_flowbase.core.formats import DocumentFormat
 
 
 class Document(DataObject):
-    """Base class for Jinja-based document data objects.
+    """Markdown-first document data object rendered from a Jinja template.
 
-    Document objects render Jinja templates with data.
-    Supported formats:
-        - MD: Markdown document (default)
-        - PDF: PDF document (via pandoc)
-        - HTML: HTML document (via pandoc)
-        - BEAMER_PDF: Beamer presentation PDF (via pandoc)
+    Convention (zero-boilerplate template lookup)
+    ---------------------------------------------
+    Define a new ``Document`` with three pieces:
 
-    Attributes:
-        template: Name of the Jinja template file.
-        template_package: Package containing the template (for importlib.resources).
-        data: Dictionary of data to render into the template.
+    1. A ``Document`` subclass with ``id``, ``description``,
+       ``supported_versions``.
+    2. An implementation of ``_make_data(self) -> None`` that populates
+       ``self.data``.
+    3. A Jinja+Markdown template at
+       ``<your_pkg>/resources/templates/documents/<id>.md.jinja``.
 
-    Subclasses must implement _make_data() to populate self.data.
+    Calling ``MyDoc(version).make()`` then renders the template with
+    ``self.data`` and writes the resulting Markdown as the master file.
+    Convert to PDF / HTML / Beamer-PDF via ``convert(fmt)``.
+
+    Supported formats
+    -----------------
+    MD (master, default), PDF, HTML, BEAMER_PDF (all conversions via
+    ``pandoc``).
+
+    Attributes
+    ----------
+    template_package:
+        Anchor Python package for the template lookup. Defaults to the
+        top-level package of the subclass module (e.g. ``their_pkg``
+        for ``their_pkg.objects.docs.MyDoc``). Override for nested
+        layouts where templates live in a different package.
+    template_subpath:
+        Directory inside ``template_package`` holding ``*.md.jinja``
+        files. Defaults to ``"resources/templates/documents"``.
+    template_name:
+        Template filename. Defaults to ``f"{id}.md.jinja"``. Override
+        only if the file does not match the convention.
+    data:
+        Dictionary of variables passed into the Jinja render. Populate
+        in ``_make_data``.
     """
 
     make_format: ClassVar[DocumentFormat] = DocumentFormat.MD  # pyright: ignore[reportIncompatibleVariableOverride]
-    template: ClassVar[str]
-    template_package: ClassVar[str] = "p40_flowbase.templates"
+    template_package: ClassVar[str | None] = None
+    template_subpath: ClassVar[str] = "resources/templates/documents"
+    template_name: ClassVar[str | None] = None
     data: dict[str, Any]
 
     def __init__(self, version: Enum) -> None:
@@ -55,24 +82,37 @@ class Document(DataObject):
 
     @abstractmethod
     def _make_data(self) -> None:
-        """Create and populate self.data dict.
+        """Populate ``self.data`` for the Jinja render.
 
-        Must be implemented by subclasses to prepare template data.
+        Must be implemented by subclasses. Called by ``_make`` before
+        the template is rendered.
         """
 
+    def _resolve_template_name(self) -> str:
+        return self.template_name or f"{self.id}.md.jinja"
+
     def _render_template(self) -> pathlib.Path:
-        """Render Jinja template with self.data and return path to rendered md."""
+        """Render the Jinja template with ``self.data``.
+
+        :returns: Path to the rendered ``.md`` inside a temporary directory.
+        :rtype: pathlib.Path
+        """
         temp_dir = pathlib.Path(tempfile.mkdtemp(prefix="jinja_template_"))
+        template_filename = self._resolve_template_name()
 
         try:
-            template_package = importlib.resources.files(self.template_package)
-            template_content = template_package.joinpath(self.template).read_text()
+            anchor_pkg = resolve_anchor_package(self)
+            template_root = importlib.resources.files(anchor_pkg)
+            template_content = (
+                template_root.joinpath(self.template_subpath, template_filename)
+                .read_text()
+            )
 
-            template_path = temp_dir / self.template
+            template_path = temp_dir / template_filename
             template_path.write_text(template_content)
 
             env = Environment(loader=FileSystemLoader(str(temp_dir)), autoescape=False)  # noqa: S701  # markdown/LaTeX templates, not HTML
-            template_obj = env.get_template(self.template)
+            template_obj = env.get_template(template_filename)
 
             rendered_md = template_obj.render(**self.data)
 
@@ -86,7 +126,7 @@ class Document(DataObject):
 
     @override
     def _make(self) -> None:
-        """Create and save the default format (md)."""
+        """Populate ``self.data`` and render the master Markdown file."""
         self._make_data()
         rendered_path = self._render_template()
 

@@ -155,8 +155,8 @@ class AgentTask(SQLModel, table=True):
     def from_spec(cls, spec: ModelVersion, **kwargs: Any) -> "AgentTask":
         """Construct an ``AgentTask`` from a ``ModelVersion`` spec.
 
-        Raises:
-            ValueError: If ``spec.provider`` is not supported by an agent SDK.
+        :raises ValueError: If ``spec.provider`` is not supported by
+            an agent SDK.
         """
         if spec.provider not in AGENT_SUPPORTED_PROVIDERS:
             msg = (

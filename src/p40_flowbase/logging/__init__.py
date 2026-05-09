@@ -61,18 +61,21 @@ def object_log_context(
 ) -> Iterator[None]:
     """Bind ``object_stem``, attach a per-object ``FileHandler``, log a marker.
 
-    Args:
-        object_stem: Unique key identifying the data object
-            (``f"{id}-{version.value.id}"``).
-        local_dir: Directory where the ``<object_stem>.log`` file lives.
-            Created if missing.
-        phase: One of ``"make"``, ``"convert"``, ``"delete"`` (used in
-            the begin/end markers written to the log).
+    On enter: sets the contextvar, ensures ``local_dir`` exists,
+    attaches a ``FileHandler`` (append mode, UTF-8) to the
+    ``p40_flowbase`` logger with an ``_ObjectFilter``. On exit: writes
+    the end marker, detaches and closes the handler, resets the
+    contextvar.
 
-    On enter: sets the contextvar, ensures ``local_dir`` exists, attaches
-    a ``FileHandler`` (append mode, UTF-8) to the ``p40_flowbase``
-    logger with an ``_ObjectFilter``. On exit: writes the end marker,
-    detaches and closes the handler, resets the contextvar.
+    :param object_stem: Unique key identifying the data object
+        (``f"{id}-{version.value.id}"``).
+    :type object_stem: str
+    :param local_dir: Directory where the ``<object_stem>.log`` file
+        lives. Created if missing.
+    :type local_dir: pathlib.Path
+    :param phase: One of ``"make"``, ``"convert"``, ``"delete"`` —
+        used in the begin/end markers written to the log.
+    :type phase: str
     """
     token = _current_object_stem.set(object_stem)
     local_dir.mkdir(parents=True, exist_ok=True)

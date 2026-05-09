@@ -49,11 +49,12 @@ def partitions_from_versions(
 ) -> dg.StaticPartitionsDefinition:
     """Convert DataObjectVersion enum tuple to Dagster static partitions.
 
-    Args:
-        versions: Tuple of version enum members with DataObjectVersion values.
-
-    Returns:
-        StaticPartitionsDefinition with partition keys from version IDs.
+    :param versions: Tuple of version enum members with
+        ``DataObjectVersion`` values.
+    :type versions: tuple[Enum, ...]
+    :returns: ``StaticPartitionsDefinition`` with partition keys
+        derived from version IDs.
+    :rtype: dg.StaticPartitionsDefinition
     """
     return dg.StaticPartitionsDefinition([
         v.value.id for v in versions
@@ -66,15 +67,14 @@ def get_version_from_partition(
 ) -> Enum:
     """Look up version enum member by partition key string.
 
-    Args:
-        partition_key: The partition key string (matches DataObjectVersion.id).
-        version_enum_class: The Enum class containing version members.
-
-    Returns:
-        The matching enum member.
-
-    Raises:
-        ValueError: If no version with the given ID exists.
+    :param partition_key: The partition key string (matches
+        ``DataObjectVersion.id``).
+    :type partition_key: str
+    :param version_enum_class: The Enum class containing version members.
+    :type version_enum_class: type[Enum]
+    :returns: The matching enum member.
+    :rtype: Enum
+    :raises ValueError: If no version with the given ID exists.
     """
     for member in version_enum_class:
         if member.value.id == partition_key:
@@ -127,20 +127,27 @@ def asset(
 ) -> dg.AssetsDefinition:
     """Create a Dagster asset definition from a DataObject class.
 
-    Generates an @asset function that materializes the DataObject by
-    calling its make() or create_tables() method.
+    Generates an ``@asset`` function that materializes the DataObject by
+    calling its ``make()`` or ``create_tables()`` method.
 
-    Args:
-        obj_class: DataObject subclass to wrap.
-        partitions_def: Partition definition for the asset.
-        version_enum_class: Enum class for resolving partition keys to versions.
-        deps: Upstream asset dependencies.
-        retries: Number of retry passes for failed requests (DB mixin only).
-        convert: Whether to run format conversion after make.
-        group_name: Dagster asset group name.
-
-    Returns:
-        Dagster AssetsDefinition.
+    :param obj_class: DataObject subclass to wrap.
+    :type obj_class: type
+    :param partitions_def: Partition definition for the asset.
+    :type partitions_def: dg.StaticPartitionsDefinition
+    :param version_enum_class: Enum class for resolving partition keys
+        to versions.
+    :type version_enum_class: type[Enum]
+    :param deps: Upstream asset dependencies.
+    :type deps: list[Any] | None
+    :param retries: Number of retry passes for failed requests
+        (DB mixin only).
+    :type retries: int
+    :param convert: Whether to run format conversion after ``make``.
+    :type convert: bool
+    :param group_name: Dagster asset group name.
+    :type group_name: str | None
+    :returns: Dagster ``AssetsDefinition``.
+    :rtype: dg.AssetsDefinition
     """
     is_db = hasattr(obj_class, "create_tables")
     is_graph_db = hasattr(obj_class, "_populate_lane_step")

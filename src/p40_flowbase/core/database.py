@@ -31,8 +31,8 @@ class DB(DataObject):
     Supported formats:
         - SQLITE: SQLite database file (default)
 
-    Attributes:
-        tables: List of SQLModel table classes to create.
+    :cvar tables: List of SQLModel table classes to create.
+    :vartype tables: list[Any]
 
     Subclasses should define their tables and can use HTTPDB/LLMDB/AgentDB
     mixins for request management.
@@ -151,9 +151,9 @@ class DB(DataObject):
         tables and their rows are left untouched, so this can be called
         safely on a re-run of a Request-backed DB workflow.
 
-        Args:
-            replace: If True, delete existing master copy and all format
-                copies, then create master copy anew.
+        :param replace: If ``True``, delete existing master copy and
+            all format copies, then create master copy anew.
+        :type replace: bool
         """
         if replace:
             self.delete()
@@ -162,18 +162,18 @@ class DB(DataObject):
         await self._create_tables()
 
     async def convert_async(self, fmt: Any = None, replace: bool = False) -> None:
-        """Async version of convert() for use in async contexts.
+        """Async version of ``convert()`` for use in async contexts.
 
-        Args:
-            fmt: Format to save (StrEnum). If None, saves in all supported formats
-                (excluding the default format).
-            replace: If True, delete existing copy and recreate. If False, raise
-                error if copy already exists.
-
-        Raises:
-            FileNotFoundError: If master copy doesn't exist.
-            FileExistsError: If format copy exists and replace=False.
-            ValueError: If fmt is not a supported format.
+        :param fmt: Format to save. If ``None``, saves in all supported
+            formats (excluding the default format).
+        :type fmt: StrEnum | None
+        :param replace: If ``True``, delete existing copy and recreate.
+            If ``False``, raise when copy already exists.
+        :type replace: bool
+        :raises FileNotFoundError: If master copy doesn't exist.
+        :raises FileExistsError: If a format copy exists and
+            ``replace=False``.
+        :raises ValueError: If ``fmt`` is not a supported format.
         """
         from enum import StrEnum
 

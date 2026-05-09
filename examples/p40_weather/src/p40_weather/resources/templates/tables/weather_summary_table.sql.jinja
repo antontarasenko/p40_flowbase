@@ -1,0 +1,9 @@
+SELECT
+    city,
+    MIN(temp_c)::DOUBLE AS temp_min_c,
+    AVG(temp_c)::DOUBLE AS temp_mean_c,
+    MAX(temp_c)::DOUBLE AS temp_max_c,
+    SUM(precip_mm)::DOUBLE AS precip_total_mm
+FROM read_parquet('{{ hourly_path }}')
+GROUP BY city
+ORDER BY city;
