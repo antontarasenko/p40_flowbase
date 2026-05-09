@@ -28,6 +28,7 @@ from abc import (
     ABC,
     abstractmethod,
 )
+from collections import Counter
 from collections.abc import (
     Awaitable,
     Callable,
@@ -41,8 +42,19 @@ from typing import (
     override,
 )
 
+from p40_flowbase.core.base import format_summary
 from p40_flowbase.core.database import DB
-from p40_flowbase.logging import logger
+from p40_flowbase.logging import (
+    logger,
+    object_log_context,
+)
+
+
+def _format_error_counter(c: Counter[str]) -> str:
+    """Render a Counter[str] as ``Type1:n,Type2:n`` (most-common first)."""
+    if not c:
+        return "none"
+    return ",".join(f"{k}:{v}" for k, v in c.most_common())
 
 if TYPE_CHECKING:
     from sqlalchemy.sql.elements import ColumnElement
@@ -133,36 +145,64 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
 
         With ``replace=True`` the DB is wiped and a fresh group is populated
         unconditionally.
+
+        Per-object logging: wrapped in ``object_log_context`` so all
+        ``_run_batch`` progress lines and the final ``make_summary`` (with
+        DB-queried authoritative numbers from ``_summary_queries``) land
+        in ``<local_dir>/<object_stem>.log``.
         """
         await self.create_tables(replace=replace)
+        # ``object_log_context`` requires local_dir to exist; create_tables already did.
+        with object_log_context(
+            object_stem=self.object_stem,
+            local_dir=self.local_dir,
+            phase="make",
+        ):
+            t0 = time.perf_counter()
+            try:
+                if replace or not await self._has_any_rows():
+                    group_id = await self.populate()
+                else:
+                    has_pending = await self._has_pending_rows()
+                    has_failed = retries > 0 and await self._has_failed_rows()
+                    if not has_pending and not has_failed:
+                        logger.info(
+                            f"{self.object_stem}: already complete, skipping"
+                        )
+                        return
+                    logger.info(
+                        f"{self.object_stem}: resuming "
+                        f"(pending={has_pending}, failed={has_failed})"
+                    )
+                    group_id = None
 
-        if replace or not await self._has_any_rows():
-            group_id = await self.populate()
-        else:
-            has_pending = await self._has_pending_rows()
-            has_failed = retries > 0 and await self._has_failed_rows()
-            if not has_pending and not has_failed:
-                logger.info(
-                    f"{self.object_stem}: already complete, skipping"
+                await self.execute(
+                    group_id=group_id,
+                    rate_limit=rate_limit,
+                    rate_period=rate_period,
                 )
-                return
-            logger.info(
-                f"{self.object_stem}: resuming "
-                f"(pending={has_pending}, failed={has_failed})"
-            )
-            group_id = None
+                for _ in range(retries):
+                    await self.retry(
+                        group_id=group_id,
+                        rate_limit=rate_limit,
+                        rate_period=rate_period,
+                    )
+            except Exception:
+                logger.exception(f"make_failed | object={self.object_stem}")
+                raise
+            dt = time.perf_counter() - t0
+            from p40_flowbase.helpers.file_stats import file_or_dir_size_bytes
 
-        await self.execute(
-            group_id=group_id,
-            rate_limit=rate_limit,
-            rate_period=rate_period,
-        )
-        for _ in range(retries):
-            await self.retry(
-                group_id=group_id,
-                rate_limit=rate_limit,
-                rate_period=rate_period,
-            )
+            master_path = self.path_to_format(self.make_format).resolve()
+            kvs: dict[str, Any] = {
+                "object": self.object_stem,
+                "fmt": self.make_format.value,
+                "dur_s": f"{dt:.3f}",
+                "bytes": file_or_dir_size_bytes(master_path),
+                **await self._summary_queries(),
+                "path": str(master_path),
+            }
+            logger.info(format_summary("make", kvs))
 
     async def make_graph(
         self,
@@ -327,6 +367,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
         ok = 0
         bad = 0
         total = 0
+        error_counter: Counter[str] = Counter()
         start = time.time()
 
         for future in asyncio.as_completed(tasks):
@@ -335,7 +376,10 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
                 result = await future
             except Exception as e:  # noqa: BLE001  # tally individual task failures without aborting the wave
                 bad += 1
-                logger.error(f"{label} failed with exception: {e}")
+                error_counter[type(e).__name__] += 1
+                logger.error(
+                    f"{label}_failed | type={type(e).__name__} msg={e}"
+                )
                 continue
             executed.append(result)
             if is_success(result):
@@ -346,17 +390,17 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
                 elapsed = time.time() - start
                 rps = total / elapsed if elapsed > 0 else 0
                 logger.info(
-                    f"Progress: {total} completed "
-                    f"({ok} succeeded, {bad} failed), "
-                    f"{elapsed:.1f}s elapsed, {rps:.2f} {label}/s"
+                    f"batch_progress | label={label} total={total} ok={ok} "
+                    f"failed={bad} elapsed_s={elapsed:.1f} "
+                    f"rps={rps:.2f} errors={_format_error_counter(error_counter)}"
                 )
 
         elapsed = time.time() - start
         rps = total / elapsed if elapsed > 0 else 0
         logger.info(
-            f"Completed processing {total} {label}s: "
-            f"{ok} succeeded, {bad} failed, "
-            f"{elapsed:.1f}s total, {rps:.2f} {label}/s"
+            f"batch_done | label={label} total={total} ok={ok} "
+            f"failed={bad} elapsed_s={elapsed:.1f} "
+            f"rps={rps:.2f} errors={_format_error_counter(error_counter)}"
         )
         return executed
 
@@ -388,3 +432,13 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
         group_id: uuid.UUID,
     ) -> list[TRequest]:
         """Return the non-superseded rows for ``group_id``."""
+
+    async def _summary_queries(self) -> dict[str, Any]:
+        """Aggregate kvs for the end-of-make summary line.
+
+        Default empty so subclasses that don't override still emit a
+        valid summary line. Concrete request DBs (HTTP/LLM/Agent)
+        override this to query their request/task table for total/ok/
+        failed counts, cost totals, and an error-type breakdown.
+        """
+        return {}

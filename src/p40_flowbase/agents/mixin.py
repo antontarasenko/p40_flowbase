@@ -64,6 +64,61 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             AgentTask.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
         )
 
+    @override
+    async def _summary_queries(self) -> dict[str, Any]:
+        """Aggregate the AgentTask table for the make_summary line.
+
+        Reports total / ok / failed task counts on the non-superseded
+        slice; sums the actual ``total_cost_usd`` and the conversational
+        ``num_turns`` / ``duration_ms`` columns; buckets ``error_message``
+        rows by the first whitespace-delimited token (a cheap heuristic
+        — exception classes are stored as text only).
+        """
+        from collections import Counter
+
+        from sqlalchemy import func
+        from sqlmodel import select
+
+        async with self.session_factory() as session:
+            agg = (
+                await session.exec(
+                    select(
+                        func.count(),
+                        func.coalesce(func.sum(AgentTask.total_cost_usd), 0.0),
+                        func.coalesce(func.sum(AgentTask.num_turns), 0),
+                        func.coalesce(func.sum(AgentTask.duration_ms), 0),
+                    ).where(AgentTask.superseded_by_id.is_(None))  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                )
+            ).first()
+            error_msgs = (
+                await session.exec(
+                    select(AgentTask.error_message, func.count())
+                    .where(
+                        AgentTask.is_error.is_(True),  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                        AgentTask.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                    )
+                    .group_by(AgentTask.error_message)
+                )
+            ).all()
+        total, cost, turns, dur_ms = (agg or (0, 0.0, 0, 0))
+        failed = sum(int(c or 0) for _, c in error_msgs)
+        ok = int(total or 0) - failed
+        error_breakdown: Counter[str] = Counter()
+        for msg, count in error_msgs:
+            key = (msg.split()[0] if msg else "Unknown")[:48]
+            error_breakdown[key] += int(count or 0)
+        return {
+            "total": int(total or 0),
+            "ok": ok,
+            "failed": failed,
+            "errors": ",".join(
+                f"{k}:{v}" for k, v in error_breakdown.most_common()
+            ) or "none",
+            "cost_usd": f"{float(cost or 0.0):.4f}",
+            "turns": int(turns or 0),
+            "wall_s": f"{float(dur_ms or 0) / 1000.0:.3f}",
+        }
+
     _openai_api_key: ClassVar[str | None] = None
     _anthropic_api_key: ClassVar[str | None] = None
 

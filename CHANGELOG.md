@@ -2,6 +2,7 @@
 
 ## Branch `main`
 
+- Improve logging: per-object .log file, summary stats, progress reports
 - Move `claude-agent-sdk`, `openai-agents`, `langgraph` to optional extras; users pin their own versions
 - Allow users add their own models
 - Add models `claude_opus_4_7`, `gpt_5_5`, `gpt_5_5_pro`, `gemini_3_1_pro_preview`, `gemini_3_1_flash_lite`

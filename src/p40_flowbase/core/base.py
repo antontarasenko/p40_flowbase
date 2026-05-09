@@ -25,6 +25,7 @@ SOFTWARE.
 import asyncio
 import pathlib
 import shutil
+import time
 from abc import (
     ABC,
     abstractmethod,
@@ -35,9 +36,19 @@ from enum import (
     Enum,
     StrEnum,
 )
-from typing import ClassVar
+from typing import (
+    Any,
+    ClassVar,
+)
 
-from p40_flowbase.logging import logger
+from p40_flowbase.helpers.file_stats import (
+    count_files,
+    file_or_dir_size_bytes,
+)
+from p40_flowbase.logging import (
+    logger,
+    object_log_context,
+)
 
 
 @dataclass(frozen=True)
@@ -55,6 +66,19 @@ class DataObjectVersion:
     description: str
 
 
+def format_summary(phase: str, kvs: dict[str, Any]) -> str:
+    """Render a one-line summary in the project's pipe-`k=v` style.
+
+    `path=...` is moved last (it's the longest field; trailing it keeps
+    the head readable). Other key order is preserved as inserted.
+    """
+    path = kvs.pop("path", None)
+    body = " ".join(f"{k}={v}" for k, v in kvs.items())
+    if path is not None:
+        body = f"{body} path={path}" if body else f"path={path}"
+    return f"{phase}_summary | {body}"
+
+
 class DataObject(ABC):
     """Base class for all data objects.
 
@@ -65,15 +89,19 @@ class DataObject(ABC):
         - supported_versions: Tuple of version enums.
         - _make(): Method to create the object in default format.
 
-    Example:
-        class MyTable(Table):
-            id = "my_table"
-            description = "My custom table"
-            supported_versions = (MyVersions.V1, MyVersions.V2)
+    Lifecycle logging
+    -----------------
+    Every ``make()`` / ``convert()`` / ``delete()`` call:
 
-            def _make(self):
-                table = pa.Table.from_pylist([{"col": 1}, {"col": 2}])
-                pq.write_table(table, self.path_to_format(TableFormat.PARQUET))
+    1. Opens an ``object_log_context``: a per-object FileHandler at
+       ``<local_dir>/<object_stem>.log`` (append mode), filtered to
+       only this object's records via a ``ContextVar``. Concurrent
+       ``make()`` calls do not bleed into each other's files.
+    2. Writes a single-line ``<phase>_summary | k=v ... path=<abs>``
+       summary at the end. Subclasses contribute fields by overriding
+       ``_make_summary`` / ``_convert_summary`` / ``_delete_summary``.
+    3. On failure: logs the traceback via ``logger.exception(...)``
+       (so it lands in the per-object log) and re-raises.
     """
 
     id: ClassVar[str]
@@ -156,24 +184,19 @@ class DataObject(ABC):
         return self.path_to_format(self.make_format).exists()
 
     def _delete_format(self, fmt: StrEnum) -> None:
-        """Delete a specific format of the object.
-
-        Args:
-            fmt: Format to delete.
-        """
+        """Delete a specific format of the object."""
         format_path = self.path_to_format(fmt)
         if format_path.exists():
             if format_path.is_dir():
                 shutil.rmtree(format_path)
             else:
                 format_path.unlink()
-            logger.info(f"Deleted format '{fmt.value}' for {self.object_stem}")
+            logger.info(
+                f"deleted_format | object={self.object_stem} fmt={fmt.value}"
+            )
 
     def _convert_formats(self, formats_to_create: Sequence[StrEnum]) -> None:
-        """Convert default format to other requested formats.
-
-        Args:
-            formats_to_create: List of format enums to create.
+        """Run each format's conversion method and log a per-format summary.
 
         Raises:
             NotImplementedError: If conversion method not found.
@@ -181,13 +204,24 @@ class DataObject(ABC):
         for fmt in formats_to_create:
             if fmt == self.make_format:
                 continue
-            conversionmethod_name = f"_convert_to_{fmt.value.replace('.', '_')}"
-            if hasattr(self, conversionmethod_name):
-                getattr(self, conversionmethod_name)()
-            else:
+            method_name = f"_convert_to_{fmt.value.replace('.', '_')}"
+            if not hasattr(self, method_name):
                 raise NotImplementedError(
-                    f"Conversion method {conversionmethod_name} not found for format '{fmt.value}'"
+                    f"Conversion method {method_name} not found for format '{fmt.value}'"
                 )
+            t0 = time.perf_counter()
+            getattr(self, method_name)()
+            dt = time.perf_counter() - t0
+            fmt_path = self.path_to_format(fmt).resolve()
+            kvs: dict[str, Any] = {
+                "object": self.object_stem,
+                "fmt": fmt.value,
+                "dur_s": f"{dt:.3f}",
+                "bytes": file_or_dir_size_bytes(fmt_path),
+                **self._convert_summary(fmt),
+                "path": str(fmt_path),
+            }
+            logger.info(format_summary("convert", kvs))
 
     @abstractmethod
     def _make(self) -> None:
@@ -205,13 +239,35 @@ class DataObject(ABC):
         """
         await asyncio.to_thread(self._make)
 
+    # ---- Subclass hooks for the lifecycle summary lines ----------------
+
+    def _make_summary(self) -> dict[str, Any]:
+        """Subclass hook contributing ``k=v`` fields to the make_summary.
+
+        Default empty. Overrides should return a small dict (e.g.
+        ``{"rows": 100, "cols": 5}``) — these are merged into the
+        summary line emitted at the end of ``make()``.
+        """
+        return {}
+
+    def _convert_summary(self, fmt: StrEnum) -> dict[str, Any]:
+        """Subclass hook for the convert_summary line. Default empty."""
+        del fmt
+        return {}
+
+    def _delete_summary(self) -> dict[str, Any]:
+        """Subclass hook for the delete_summary line. Default empty."""
+        return {}
+
+    # ---- Public lifecycle methods --------------------------------------
+
     def make(self, replace: bool = False) -> None:
         """Create the master copy of the object in the default format.
 
         Args:
-            replace: If True, delete existing master copy and all format copies,
-                then create master copy anew. If False, raise error if master
-                copy already exists.
+            replace: If True, delete existing master copy and all format
+                copies, then create master copy anew. If False, raise
+                error if master copy already exists.
 
         Raises:
             FileExistsError: If master copy exists and replace=False.
@@ -226,8 +282,28 @@ class DataObject(ABC):
             self.delete()
 
         self.local_dir.mkdir(parents=True, exist_ok=True)
-        self._make()
-        logger.info(f"{self.object_stem} created successfully")
+        with object_log_context(
+            object_stem=self.object_stem,
+            local_dir=self.local_dir,
+            phase="make",
+        ):
+            t0 = time.perf_counter()
+            try:
+                self._make()
+            except Exception:
+                logger.exception(f"make_failed | object={self.object_stem}")
+                raise
+            dt = time.perf_counter() - t0
+            master_path = self.path_to_format(self.make_format).resolve()
+            kvs: dict[str, Any] = {
+                "object": self.object_stem,
+                "fmt": self.make_format.value,
+                "dur_s": f"{dt:.3f}",
+                "bytes": file_or_dir_size_bytes(master_path),
+                **self._make_summary(),
+                "path": str(master_path),
+            }
+            logger.info(format_summary("make", kvs))
 
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:
         """Create a copy of the object in a supported format using the master copy.
@@ -272,13 +348,45 @@ class DataObject(ABC):
             if format_path.exists() and replace:
                 self._delete_format(fmt_enum)
 
-        self._convert_formats(formats_to_create)
+        with object_log_context(
+            object_stem=self.object_stem,
+            local_dir=self.local_dir,
+            phase="convert",
+        ):
+            try:
+                self._convert_formats(formats_to_create)
+            except Exception:
+                logger.exception(f"convert_failed | object={self.object_stem}")
+                raise
 
     def delete(self) -> None:
-        """Delete all on-disk data for this object (master copy and all format copies).
+        """Delete all on-disk data for this object.
 
         Idempotent: returns silently if nothing exists to delete.
+        Logs a ``delete_summary`` line with file count + bytes BEFORE
+        the rmtree so the per-object log captures the size that was
+        reclaimed (the log file itself goes with the rmtree).
         """
-        if self.local_dir.exists():
-            shutil.rmtree(self.local_dir)
-            logger.info(f"Deleted {self.object_stem}")
+        if not self.local_dir.exists():
+            return
+
+        # Compute stats up-front so the summary records what was reclaimed.
+        files_n = count_files(self.local_dir)
+        size_b = file_or_dir_size_bytes(self.local_dir)
+        local_dir = self.local_dir.resolve()
+
+        with object_log_context(
+            object_stem=self.object_stem,
+            local_dir=self.local_dir,
+            phase="delete",
+        ):
+            kvs: dict[str, Any] = {
+                "object": self.object_stem,
+                "files": files_n,
+                "bytes": size_b,
+                **self._delete_summary(),
+                "path": str(local_dir),
+            }
+            logger.info(format_summary("delete", kvs))
+        # The handler is detached at this point; rmtree removes the log file too.
+        shutil.rmtree(self.local_dir)

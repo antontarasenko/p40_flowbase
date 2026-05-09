@@ -53,6 +53,56 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
         )
 
     @override
+    async def _summary_queries(self) -> dict[str, Any]:
+        """Aggregate the run's HTTPRequest table for the make_summary line.
+
+        Counts non-superseded rows by ``response_status``; reports the
+        2xx total separately, all other statuses as the error-type
+        breakdown. Also sums ``response_size`` and averages ``latency``
+        across successful rows.
+        """
+        from collections import Counter
+
+        from sqlalchemy import func
+        from sqlmodel import select
+
+        async with self.session_factory() as session:
+            status_rows = (
+                await session.exec(
+                    select(HTTPRequest.response_status, func.count())
+                    .where(HTTPRequest.superseded_by_id.is_(None))  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                    .group_by(HTTPRequest.response_status)  # type: ignore[arg-type]
+                )
+            ).all()
+            ok_aggregates = (
+                await session.exec(
+                    select(
+                        func.coalesce(func.sum(HTTPRequest.response_size), 0),
+                        func.coalesce(func.avg(HTTPRequest.latency), 0.0),
+                    ).where(HTTPRequest.response_status == 200)
+                )
+            ).first()
+        total = sum(int(c or 0) for _, c in status_rows)
+        ok = sum(int(c or 0) for s, c in status_rows if s == 200)
+        failed = total - ok
+        error_breakdown: Counter[str] = Counter()
+        for status, count in status_rows:
+            if status != 200:
+                key = f"http{status}" if status is not None else "no_status"
+                error_breakdown[key] += int(count or 0)
+        bytes_in, avg_latency = (ok_aggregates or (0, 0.0))
+        return {
+            "total": total,
+            "ok": ok,
+            "failed": failed,
+            "errors": ",".join(
+                f"{k}:{v}" for k, v in error_breakdown.most_common()
+            ) or "none",
+            "bytes_in": int(bytes_in or 0),
+            "avg_latency_s": f"{float(avg_latency or 0.0):.3f}",
+        }
+
+    @override
     async def _populate(self) -> uuid.UUID:
         if not hasattr(self, "_populate_http_requests"):
             raise NotImplementedError(

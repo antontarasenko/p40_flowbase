@@ -17,7 +17,6 @@ import joblib
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import ModelFormat
-from p40_flowbase.logging import logger
 
 
 class Model(DataObject):
@@ -62,4 +61,3 @@ class Model(DataObject):
         model = self.model
         joblib_path = self.path_to_format(ModelFormat.JOBLIB)
         joblib.dump(model, joblib_path)
-        logger.info(f"Converted to joblib: {joblib_path}")

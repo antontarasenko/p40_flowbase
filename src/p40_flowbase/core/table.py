@@ -28,7 +28,6 @@ from p40_flowbase.helpers.sql_templates import (
     render_sql_template,
     validate_arrow_against_pydantic,
 )
-from p40_flowbase.logging import logger
 
 
 class Table(DataObject):
@@ -208,19 +207,22 @@ class Table(DataObject):
         """
         self.make_via_sql_template()
 
+    @override
+    def _make_summary(self) -> dict[str, Any]:
+        df = self.df
+        return {"rows": df.num_rows, "cols": df.num_columns}
+
     def _convert_to_csv(self) -> None:
         """Convert parquet to csv."""
         src = self.path_to_format(TableFormat.PARQUET)
         dst = self.path_to_format(TableFormat.CSV)
         duckdb.read_parquet(str(src)).write_csv(str(dst), header=True)
-        logger.info(f"Converted to CSV: {dst}")
 
     def _convert_to_tsv(self) -> None:
         """Convert parquet to tsv."""
         src = self.path_to_format(TableFormat.PARQUET)
         dst = self.path_to_format(TableFormat.TSV)
         duckdb.read_parquet(str(src)).write_csv(str(dst), header=True, sep="\t")
-        logger.info(f"Converted to TSV: {dst}")
 
     def _convert_to_json(self) -> None:
         """Convert parquet to json (array of records, indented)."""
@@ -228,7 +230,6 @@ class Table(DataObject):
         dst = self.path_to_format(TableFormat.JSON)
         rows = pq.read_table(src).to_pylist()
         dst.write_text(json.dumps(rows, indent=2, default=str))
-        logger.info(f"Converted to JSON: {dst}")
 
 
 TDB = TypeVar("TDB", bound=DB)

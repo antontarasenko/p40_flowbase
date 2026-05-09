@@ -15,7 +15,6 @@ from typing import (
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import DBFormat
-from p40_flowbase.logging import logger
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import (
@@ -46,6 +45,10 @@ class DB(DataObject):
         super().__init__(version)
         self._engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
+
+    @override
+    def _make_summary(self) -> dict[str, Any]:
+        return {"tables": len(self.tables)}
 
     def _get_database_url(self) -> str:
         """Return the async database URL."""
@@ -157,7 +160,6 @@ class DB(DataObject):
 
         self.local_dir.mkdir(parents=True, exist_ok=True)
         await self._create_tables()
-        logger.info(f"{self.object_stem} ready")
 
     async def convert_async(self, fmt: Any = None, replace: bool = False) -> None:
         """Async version of convert() for use in async contexts.

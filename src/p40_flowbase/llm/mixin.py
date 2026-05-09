@@ -100,6 +100,57 @@ class LLMDB(HTTPDB):
             LLMRequest.superseded_by_id.is_(None),  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
         )
 
+    @override
+    async def _summary_queries(self) -> dict[str, Any]:
+        """Aggregate the LLMRequest table for the make_summary line.
+
+        Joins to ``HTTPRequest`` for the per-status breakdown (since
+        each LLM request is backed by an HTTP call). Reports
+        ``cost_usd_expected`` from the ``LLMRequest.expected_input_cost_usd``
+        column (computed at populate time; the actual response-token
+        cost is not persisted on the LLM row).
+        """
+        from collections import Counter
+
+        from sqlalchemy import func
+        from sqlmodel import select
+
+        async with self.session_factory() as session:
+            status_rows = (
+                await session.exec(
+                    select(HTTPRequest.response_status, func.count())
+                    .join(
+                        LLMRequest,
+                        LLMRequest.http_request_id == HTTPRequest.http_request_id,  # type: ignore[arg-type]
+                    )
+                    .where(LLMRequest.superseded_by_id.is_(None))  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                    .group_by(HTTPRequest.response_status)  # type: ignore[arg-type]
+                )
+            ).all()
+            cost_total = (
+                await session.exec(
+                    select(func.coalesce(func.sum(LLMRequest.expected_input_cost_usd), 0.0))
+                    .where(LLMRequest.response_text.is_not(None))  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                )
+            ).first()
+        total = sum(int(c or 0) for _, c in status_rows)
+        ok = sum(int(c or 0) for s, c in status_rows if s == 200)
+        failed = total - ok
+        error_breakdown: Counter[str] = Counter()
+        for status, count in status_rows:
+            if status != 200:
+                key = f"http{status}" if status is not None else "no_http"
+                error_breakdown[key] += int(count or 0)
+        return {
+            "total": total,
+            "ok": ok,
+            "failed": failed,
+            "errors": ",".join(
+                f"{k}:{v}" for k, v in error_breakdown.most_common()
+            ) or "none",
+            "cost_usd_expected": f"{float(cost_total or 0.0):.4f}",
+        }
+
     _anthropic_api_key: ClassVar[str | None] = None
     _google_api_key: ClassVar[str | None] = None
     _openai_api_key: ClassVar[str | None] = None

@@ -5,11 +5,18 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import subprocess
-from typing import ClassVar
+from typing import (
+    Any,
+    ClassVar,
+    override,
+)
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import CompositeFormat
-from p40_flowbase.logging import logger
+from p40_flowbase.helpers.file_stats import (
+    count_files,
+    dir_size_bytes,
+)
 
 
 class Composite(DataObject):
@@ -24,6 +31,14 @@ class Composite(DataObject):
 
     make_format: ClassVar[CompositeFormat] = CompositeFormat.FILES  # pyright: ignore[reportIncompatibleVariableOverride]
 
+    @override
+    def _make_summary(self) -> dict[str, Any]:
+        files_dir = self.path_to_format(CompositeFormat.FILES)
+        return {
+            "files": count_files(files_dir),
+            "files_bytes": dir_size_bytes(files_dir),
+        }
+
     def _convert_to_zip(self) -> None:
         """Convert files directory to zip."""
         import zipfile
@@ -34,7 +49,6 @@ class Composite(DataObject):
             for file_path in files_path.rglob("*"):
                 if file_path.is_file():
                     zipf.write(file_path, file_path.relative_to(files_path))
-        logger.info(f"Converted to ZIP: {zip_path}")
 
     def _convert_to_tar_zst(self) -> None:
         """Convert files directory to tar.zst."""
@@ -62,4 +76,3 @@ class Composite(DataObject):
                 tar_process.returncode or zstd_process.returncode,
                 "tar | zstd",
             )
-        logger.info(f"Converted to TAR.ZST: {tar_zst_path}")

@@ -24,7 +24,6 @@ from jinja2 import (
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import DocumentFormat
-from p40_flowbase.logging import logger
 
 
 class Document(DataObject):
@@ -104,7 +103,6 @@ class Document(DataObject):
             ["pandoc", str(md_path), "-o", str(pdf_path)],
             check=True,
         )
-        logger.info(f"Converted to PDF: {pdf_path}")
 
     def _convert_to_html(self) -> None:
         """Convert md to html using pandoc."""
@@ -114,7 +112,6 @@ class Document(DataObject):
             ["pandoc", str(md_path), "-o", str(html_path)],
             check=True,
         )
-        logger.info(f"Converted to HTML: {html_path}")
 
     def _convert_to_beamer_pdf(self) -> None:
         """Convert md to beamer pdf using pandoc."""
@@ -129,4 +126,3 @@ class Document(DataObject):
             ],
             check=True,
         )
-        logger.info(f"Converted to Beamer PDF: {beamer_pdf_path}")
