@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.5.0 (2026-05-09)
+
 - Add data checks to Table, Composite, DB classes via `checks` attribute
 - Add `convert_formats` option to Dagster runs
 - Rewrite docstrings in Sphinx reST (pep257) instead of Google style; add example project `p40_weather`
