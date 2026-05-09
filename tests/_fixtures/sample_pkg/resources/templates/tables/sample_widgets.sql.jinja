@@ -1,0 +1,9 @@
+SELECT
+    widget_id::BIGINT AS widget_id,
+    name::VARCHAR AS name,
+    value::BIGINT AS value
+FROM (VALUES
+    (1, 'alpha', 10),
+    (2, 'beta', 20),
+    (3, 'gamma', {{ third_value }})
+) AS t(widget_id, name, value);

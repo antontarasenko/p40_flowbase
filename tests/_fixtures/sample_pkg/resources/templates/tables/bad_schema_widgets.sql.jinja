@@ -1,0 +1,4 @@
+SELECT
+    widget_id::BIGINT AS widget_id,
+    'extra' AS unexpected_column
+FROM (VALUES (1), (2)) AS t(widget_id);

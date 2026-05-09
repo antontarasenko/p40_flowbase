@@ -1,0 +1,7 @@
+SELECT
+    widget_id::INTEGER AS widget_id,
+    name::VARCHAR AS name
+FROM (VALUES
+    (10, 'one'),
+    (20, 'two')
+) AS t(widget_id, name);

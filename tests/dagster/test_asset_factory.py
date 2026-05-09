@@ -16,7 +16,6 @@ from typing import override
 
 import dagster as dg
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pydantic as pyd
 from sqlmodel import (
     Field,
@@ -49,7 +48,7 @@ class _PlainTable(Table):
     @override
     def _make(self) -> None:
         table = pa.Table.from_pylist([{"n": 1}, {"n": 2}])
-        pq.write_table(table, self.path_to_format(TableFormat.PARQUET))
+        self.save_arrow(table)
 
 
 class _AFWidget(SQLModel, table=True):
