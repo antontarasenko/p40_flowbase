@@ -160,6 +160,22 @@ cities → http_db → files → hourly → summary ─┬→ narrative_db → n
 
 `version_config` is a leaf (no deps); it just persists the version snapshot alongside the rest of the run.
 
+## Post-make checks
+
+Each subclass declares a tuple of `fb.Check` objects in a `checks` ClassVar; the framework runs them after `make()` succeeds and raises `fb.CheckFailedError` (turning the Dagster asset red) on the first failure. A 100%-failed `WeatherHTTPDB`, a 0-row `WeatherSummaryTable`, or an empty-files `WeatherResponseFiles` no longer slip through silently.
+
+```python
+from p40_flowbase import checks as ck
+
+class WeatherSummaryTable(fb.Table):
+    checks = (ck.MinRows(1), ck.NoNulls("city", "temp_mean_c"), ck.Unique("city"))
+
+class WeatherHTTPDB(fb.HTTPDB):
+    checks = (ck.MinRequests(1), ck.MaxFailureRate(frac=0.0))
+```
+
+Built-ins: `MinRows`, `NoNulls`, `Unique` for `Table`; `MinFiles`, `NoEmptyFiles`, `MinFileSize`, `SchemaMatches` for `Composite`; `MinRequests`, `MaxFailureRate` for `HTTPDB`/`LLMDB`/`AgentDB`. Each check logs `check_start` / `check_ok` / `check_failed | <name>` to the per-object `.meta.log`.
+
 ## Versions
 
 Two versions are wired into `WeatherVersions`:

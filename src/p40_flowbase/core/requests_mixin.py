@@ -169,6 +169,9 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
                         logger.info(
                             f"{self.object_stem}: already complete, skipping"
                         )
+                        # Re-validate cached data so a Dagster retry on
+                        # finished-but-failed output still goes red.
+                        await self._arun_checks()
                         return
                     logger.info(
                         f"{self.object_stem}: resuming "
@@ -209,6 +212,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
                 "path": str(master_path),
             }
             logger.info(format_summary("make", kvs))
+            await self._arun_checks()
 
     async def make_graph(
         self,

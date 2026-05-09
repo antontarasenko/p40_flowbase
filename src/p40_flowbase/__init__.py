@@ -84,6 +84,7 @@ License: MIT. Copyright (c) 2025 Anton Tarasenko.
 
 from importlib.metadata import version
 
+from p40_flowbase import checks
 from p40_flowbase.agents import (
     AgentDB,
     AgentFile,
@@ -92,6 +93,10 @@ from p40_flowbase.agents import (
     AgentTaskExtra,
     AgentTaskGroup,
     AgentToolCall,
+)
+from p40_flowbase.checks import (
+    Check,
+    CheckFailedError,
 )
 from p40_flowbase.config import BaseFlowSettings
 from p40_flowbase.core import (
@@ -172,6 +177,8 @@ __all__ = [
     "AgentTaskGroup",
     "AgentToolCall",
     "BaseFlowSettings",
+    "Check",
+    "CheckFailedError",
     "Composite",
     "CompositeFormat",
     "ConvertFormatsResource",
@@ -203,6 +210,7 @@ __all__ = [
     "__version__",
     "apply_style",
     "asset",
+    "checks",
     "extract_json_from_response",
     "get_version_from_partition",
     "logger",

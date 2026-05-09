@@ -29,6 +29,7 @@ import p40_flowbase as fb
 import pyarrow as pa
 import pydantic as pyd
 import sqlmodel as sm
+from p40_flowbase import checks as ck
 
 from p40_weather.helpers import build_forecast_url
 
@@ -250,6 +251,11 @@ class WeatherHTTPDB(fb.HTTPDB):
         WeatherHTTPRequestExtra,
         fb.HTTPRequest,
     ]
+    # Catch zero-row populates and any 4xx/5xx response from Open-Meteo.
+    checks: ClassVar[tuple[fb.Check, ...]] = (
+        ck.MinRequests(1),
+        ck.MaxFailureRate(frac=0.0),
+    )
 
     # Open-Meteo free-tier rate limits (per their docs, 2026): 10 req/s,
     # 600 req/min, 5_000 req/h, 10_000 req/day. We pick 3/s for headroom
@@ -323,6 +329,12 @@ class WeatherResponseFiles(fb.Composite):
     id: ClassVar[str] = "weather_response_files"
     description: ClassVar[str] = "Per-city Open-Meteo JSON responses."
     supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
+    # Each successful HTTP response writes one file; truncated downloads
+    # surface as 0-byte files.
+    checks: ClassVar[tuple[fb.Check, ...]] = (
+        ck.MinFiles(1),
+        ck.NoEmptyFiles(),
+    )
 
     @override
     def _make(self) -> None:
@@ -409,6 +421,10 @@ class WeatherHourlyTable(fb.Table):
     )
     supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
     row_schema: ClassVar[type[pyd.BaseModel]] = HourlyRow
+    checks: ClassVar[tuple[fb.Check, ...]] = (
+        ck.MinRows(1),
+        ck.NoNulls("city", "ts_utc", "temp_c"),
+    )
 
     @override
     def _make(self) -> None:
@@ -491,6 +507,12 @@ class WeatherSummaryTable(fb.Table):
     supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
     row_schema: ClassVar[type[pyd.BaseModel]] = SummaryRow
     template_package: ClassVar[str | None] = "p40_weather"
+    # One row per city; city is the natural key for downstream joins.
+    checks: ClassVar[tuple[fb.Check, ...]] = (
+        ck.MinRows(1),
+        ck.NoNulls("city", "temp_mean_c"),
+        ck.Unique("city"),
+    )
 
     @override
     def _make(self) -> None:
@@ -560,6 +582,11 @@ class WeatherCityNarrativeAgentDB(fb.AgentDB):
         fb.AgentToolCall,
         fb.AgentMessage,
     ]
+    # No silent skip if the agent fails on every city.
+    checks: ClassVar[tuple[fb.Check, ...]] = (
+        ck.MinRequests(1),
+        ck.MaxFailureRate(frac=0.0),
+    )
 
     #: Default model. Override to swap providers / cost.
     model_spec: ClassVar[fb.ModelVersion] = fb.Models.CLAUDE_SONNET_4_6
@@ -659,6 +686,12 @@ class WeatherCityNarrativeTable(fb.TableFromDB[WeatherCityNarrativeAgentDB]):
     supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
     db_class: ClassVar[type] = WeatherCityNarrativeAgentDB
     row_schema: ClassVar[type[pyd.BaseModel]] = NarrativeRow
+    # The narrative join filters to is_error=False; if every task fails
+    # this would be a 0-row parquet that passes the schema gate.
+    checks: ClassVar[tuple[fb.Check, ...]] = (
+        ck.MinRows(1),
+        ck.NoNulls("city", "narrative"),
+    )
 
     @override
     async def _build_df(self, db: WeatherCityNarrativeAgentDB) -> pa.Table:

@@ -37,6 +37,7 @@ from enum import (
     StrEnum,
 )
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
 )
@@ -49,6 +50,9 @@ from p40_flowbase.logging import (
     logger,
     object_log_context,
 )
+
+if TYPE_CHECKING:
+    from p40_flowbase.checks import BaseCheck
 
 
 @dataclass(frozen=True)
@@ -127,6 +131,9 @@ class DataObject(ABC):
     description: ClassVar[str]
     make_format: ClassVar[StrEnum]
     supported_versions: ClassVar[tuple[Enum, ...]] = ()
+    #: Post-make checks; iterated by ``make`` / ``amake`` after the
+    #: ``make_summary`` log line. See ``p40_flowbase.checks`` for built-ins.
+    checks: ClassVar[tuple["BaseCheck", ...]] = ()
     version: Enum
 
     # Must be set by project config
@@ -304,6 +311,37 @@ class DataObject(ABC):
         }
         logger.info(format_summary("make", kvs))
 
+    def _run_checks(self) -> None:
+        """Iterate ``self.checks`` synchronously; first failure raises.
+
+        Used by sync ``make()``. Async-only checks raise
+        ``NotImplementedError`` here; that propagates as a clear "use
+        amake()" error.
+        """
+        for check in self.checks:
+            logger.info(f"check_start | {check.name}")
+            try:
+                check.run(self)
+            except Exception:
+                logger.exception(f"check_failed | {check.name}")
+                raise
+            logger.info(f"check_ok | {check.name}")
+
+    async def _arun_checks(self) -> None:
+        """Iterate ``self.checks`` asynchronously; first failure raises.
+
+        Used by ``amake()`` and ``RequestsDBMixin.make()``. Sync checks
+        delegate to :meth:`BaseCheck.run` via the default ``arun``.
+        """
+        for check in self.checks:
+            logger.info(f"check_start | {check.name}")
+            try:
+                await check.arun(self)
+            except Exception:
+                logger.exception(f"check_failed | {check.name}")
+                raise
+            logger.info(f"check_ok | {check.name}")
+
     def make(self, replace: bool = False) -> None:
         """Create the master copy of the object in the default format.
 
@@ -327,6 +365,7 @@ class DataObject(ABC):
                 logger.exception(f"make_failed | object={self.object_stem}")
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
+            self._run_checks()
 
     async def amake(self, replace: bool = False) -> None:
         """Async lifecycle entry; mirrors ``make()`` but awaits ``_amake()``.
@@ -357,6 +396,7 @@ class DataObject(ABC):
                 logger.exception(f"make_failed | object={self.object_stem}")
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
+            await self._arun_checks()
 
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:
         """Create a copy of the object in a supported format using the master copy.
