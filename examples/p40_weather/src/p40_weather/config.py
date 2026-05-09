@@ -8,9 +8,8 @@ example. Real projects can either keep the empty prefix or pick a
 project-specific one.
 """
 
-import pydantic_settings
-
 import p40_flowbase as fb
+import pydantic_settings
 
 
 class WeatherSettings(fb.BaseFlowSettings):

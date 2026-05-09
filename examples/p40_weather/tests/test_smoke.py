@@ -168,7 +168,7 @@ def test_end_to_end_with_mocked_http(local_data):
 
     hourly = WeatherHourlyTable(WeatherVersions.MAIN)
     hourly.make(replace=True)
-    assert hourly.df.num_rows == 15  # 5 cities × 3 hours
+    assert hourly.df.num_rows == 15  # 5 cities x 3 hours
     assert sorted(hourly.df.column_names) == [
         "city",
         "precip_mm",

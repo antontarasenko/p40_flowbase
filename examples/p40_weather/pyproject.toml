@@ -36,3 +36,27 @@ p40_weather = [
     "resources/templates/tables/*.sql.jinja",
     "resources/versions/weather_versions/*.tsv",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+fix = true
+
+[tool.ruff.lint]
+# Tight on real defects, lax on the noise families that are
+# load-bearing for a library but distracting in a worked example.
+select = [
+    "E",   # pycodestyle (errors)
+    "F",   # pyflakes
+    "W",   # pycodestyle (warnings)
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501", # line too long; let the formatter handle it
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B"] # bugbear false-positives in mock fakes

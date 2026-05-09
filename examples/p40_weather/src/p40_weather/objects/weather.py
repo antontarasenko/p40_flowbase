@@ -28,11 +28,11 @@ from typing import (
 )
 
 import matplotlib.pyplot as plt
+import p40_flowbase as fb
 import pyarrow as pa
 import pydantic as pyd
 import sqlmodel as sm
 
-import p40_flowbase as fb
 from p40_weather.helpers import build_forecast_url
 
 ################################################################################
