@@ -61,22 +61,22 @@ This pulls `p40_flowbase`, `claude-agent-sdk` (the only agent SDK this example u
 
 ## Run the pipeline
 
-Set the data root and an Anthropic API key, then materialize all assets via Dagster. `WeatherSettings` (in `src/p40_weather/config.py`) reads env vars without a prefix, so `LOCAL_DATA` and `ANTHROPIC_API_KEY` are picked up directly:
+Materialize all assets via Dagster:
 
 ```sh
 export LOCAL_DATA=/tmp/p40_weather_data         # default if unset
-export ANTHROPIC_API_KEY=sk-ant-...             # for the AgentDB step
+export ANTHROPIC_API_KEY=sk-ant-...             # (optional) for the AgentDB step
 
-dg dev -m p40_weather.definitions                  # web UI, click "Materialize all"
+dg dev -m p40_weather.definitions               # web UI, click "Materialize all"
 # ...or one-shot:
-dg launch -m p40_weather.definitions --select '*'
+dg launch -m p40_weather.definitions --assets '*'
 ```
 
 Run for the 16-day forecast version:
 
 ```sh
 dg launch -m p40_weather.definitions \
-    --select '*' \
+    --assets '*' \
     --partition backfill_2025
 ```
 
@@ -84,11 +84,55 @@ Force re-creation of selected assets via the `replace` resource:
 
 ```sh
 dg launch -m p40_weather.definitions \
-    --select 'weather_summary_table+' \
+    --assets 'weather_summary_table*' \
     --config-json '{"resources":{"replace":{"config":{"replace":true}}}}'
 ```
 
-The pipeline ends with `weather_doc-main.md` (or `weather_doc-backfill_2025.md`) containing the per-city summary table, the LLM-written narratives, and an embedded SVG bar chart of mean temperatures.
+Materialize side formats (CSV, JSON, SVG, ...) per run via the `convert_formats` resource:
+
+```sh
+dg launch -m p40_weather.definitions \
+    --assets '*' --partition main \
+    --config-json '{"resources":{"convert_formats":{"config":{"formats":["tsv","svg"]}}}}'
+```
+
+For per-asset static defaults, set `convert_formats` on the `fb.asset(...)` call in `definitions.py`.
+
+## Materialize an object-version without Dagster
+
+Making sync objects (`Table`, `Composite`, `Figure`, `Document`):
+
+```python
+import p40_flowbase as fb
+from p40_weather.objects import WeatherSummaryTable, WeatherVersions
+fb.DataObject.set_local_data("/tmp/p40_weather")
+WeatherSummaryTable(WeatherVersions.MAIN).make(replace=True)
+```
+
+Making async objects (`HTTPDB`, `LLMDB`, `AgentDB`, `TableFromDB`):
+
+```python
+import asyncio
+import p40_flowbase as fb
+from p40_weather.objects import WeatherCityNarrativeAgentDB, WeatherVersions
+fb.DataObject.set_local_data("/tmp/p40_weather")
+asyncio.run(WeatherCityNarrativeAgentDB(WeatherVersions.MAIN).make(replace=True))
+```
+
+When calling from a event loop (inside an async function, Jupyter await cell, Dagster asset), use `amake()`:
+
+```python
+await WeatherSummaryTable(WeatherVersions.MAIN).amake(replace=True)
+await WeatherCityNarrativeAgentDB(WeatherVersions.MAIN).amake(replace=True)
+```
+
+Every object exposes the same `make()` / `convert()` / `delete()`.
+
+Track progress with:
+
+```sh
+tail -f $LOCAL_DATA/weather_city_narrative_agent_db-main/weather_city_narrative_agent_db-main.meta.log
+```
 
 ## Pipeline overview
 

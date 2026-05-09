@@ -118,6 +118,7 @@ from p40_flowbase.core import (
     make_llm_request_group_table,
 )
 from p40_flowbase.dagster import (
+    ConvertFormatsResource,
     DataObjectIOManager,
     ReplaceResource,
     asset,
@@ -173,6 +174,7 @@ __all__ = [
     "BaseFlowSettings",
     "Composite",
     "CompositeFormat",
+    "ConvertFormatsResource",
     "DBFormat",
     "DataObject",
     "DataObjectIOManager",

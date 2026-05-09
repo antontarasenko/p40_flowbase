@@ -1,10 +1,4 @@
 """Dagster ``Definitions`` for the p40_weather pipeline.
-
-Run with::
-
-    cd examples/p40_weather
-    pip install -e .
-    dg dev -m p40_weather.definitions
 """
 
 import dagster as dg
@@ -44,7 +38,12 @@ cities = fb.asset(WeatherInputCities, **common)
 http_db = fb.asset(WeatherHTTPDB, deps=[cities], **common)
 files = fb.asset(WeatherResponseFiles, deps=[http_db], **common)
 hourly = fb.asset(WeatherHourlyTable, deps=[files], **common)
-summary = fb.asset(WeatherSummaryTable, deps=[hourly], **common)
+summary = fb.asset(
+    WeatherSummaryTable,
+    deps=[hourly],
+    convert_formats=[fb.TableFormat.TSV],
+    **common,
+)
 narrative_db = fb.asset(WeatherCityNarrativeAgentDB, deps=[summary], **common)
 narrative = fb.asset(
     WeatherCityNarrativeTable,
@@ -55,6 +54,7 @@ figure = fb.asset(WeatherFigure, deps=[summary], **common)
 doc = fb.asset(
     WeatherDoc,
     deps=[figure, summary, narrative],
+    convert_formats=[fb.DocumentFormat.PDF],
     **common,
 )
 
@@ -71,5 +71,8 @@ defs = dg.Definitions(
         figure,
         doc,
     ],
-    resources={"replace": fb.ReplaceResource()},
+    resources={
+        "replace": fb.ReplaceResource(),
+        "convert_formats": fb.ConvertFormatsResource(),
+    },
 )

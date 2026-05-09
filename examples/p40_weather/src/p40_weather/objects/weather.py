@@ -20,7 +20,11 @@ from typing import (
     override,
 )
 
-import matplotlib.pyplot as plt
+import matplotlib
+
+matplotlib.use("Agg")  # headless: Dagster runs each asset in a non-GUI subprocess
+
+import matplotlib.pyplot as plt  # must follow matplotlib.use(...)
 import p40_flowbase as fb
 import pyarrow as pa
 import pydantic as pyd
@@ -246,6 +250,14 @@ class WeatherHTTPDB(fb.HTTPDB):
         WeatherHTTPRequestExtra,
         fb.HTTPRequest,
     ]
+
+    # Open-Meteo free-tier rate limits (per their docs, 2026): 10 req/s,
+    # 600 req/min, 5_000 req/h, 10_000 req/day. We pick 3/s for headroom
+    # under the per-second cap and to play nicely with concurrent runs in
+    # the same workspace. Override via ``make(rate_limit=..., rate_period=...)``
+    # if you have a paid plan with higher limits.
+    rate_limit: ClassVar[float] = 3.0
+    rate_period: ClassVar[float] = 1.0
 
     async def _populate_http_requests(self) -> uuid.UUID:
         wv = _wv(self.version)
@@ -551,6 +563,17 @@ class WeatherCityNarrativeAgentDB(fb.AgentDB):
 
     #: Default model. Override to swap providers / cost.
     model_spec: ClassVar[fb.ModelVersion] = fb.Models.CLAUDE_SONNET_4_6
+
+    # Anthropic per-workspace request limits for Sonnet 4.6 (per Anthropic
+    # docs, 2026): Tier 1 = 50 RPM, Tier 2 = 1_000 RPM, Tier 3 = 2_000 RPM,
+    # Tier 4 = 4_000 RPM. We pick 0.5 req/s (= 30 RPM) as the safe default
+    # for Tier-1 accounts with headroom for parallel work in the same
+    # workspace. Override via ``make(rate_limit=..., rate_period=...)`` if
+    # you have a higher tier. The Sonnet single-turn round-trip is 5-10 s
+    # in practice, so this rate limit only matters when the API gets fast
+    # enough that we'd otherwise burst above the per-minute cap.
+    rate_limit: ClassVar[float] = 0.5
+    rate_period: ClassVar[float] = 1.0
 
     async def _populate_agent_tasks(self) -> uuid.UUID:
         wv = _wv(self.version)

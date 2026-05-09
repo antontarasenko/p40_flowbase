@@ -2,6 +2,7 @@
 
 ## Branch `main`
 
+- Add `convert_formats` option to Dagster runs
 - Rewrite docstrings in Sphinx reST (pep257) instead of Google style; add example project `p40_weather`
 - Improve logging: per-object .log file, summary stats, progress reports
 - Move `claude-agent-sdk`, `openai-agents`, `langgraph` to optional extras; users pin their own versions

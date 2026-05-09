@@ -194,12 +194,18 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             from p40_flowbase.helpers.file_stats import file_or_dir_size_bytes
 
             master_path = self.path_to_format(self.make_format).resolve()
+            summary_kvs = await self._summary_queries()
+            # Inject lifecycle-level RPS when the subclass reports a row
+            # ``total``. Cheaper than recomputing in every subclass.
+            total = summary_kvs.get("total")
+            if isinstance(total, int) and dt > 0:
+                summary_kvs["rps"] = f"{total / dt:.3f}"
             kvs: dict[str, Any] = {
                 "object": self.object_stem,
                 "fmt": self.make_format.value,
                 "dur_s": f"{dt:.3f}",
                 "bytes": file_or_dir_size_bytes(master_path),
-                **await self._summary_queries(),
+                **summary_kvs,
                 "path": str(master_path),
             }
             logger.info(format_summary("make", kvs))

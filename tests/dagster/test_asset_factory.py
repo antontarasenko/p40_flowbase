@@ -115,7 +115,10 @@ def _materialize(
     result = dg.materialize_to_memory(
         [asset_def],
         partition_key="af_v1",
-        resources={"replace": fb.ReplaceResource(replace=replace)},
+        resources={
+            "replace": fb.ReplaceResource(replace=replace),
+            "convert_formats": fb.ConvertFormatsResource(),
+        },
     )
     assert result.success
 

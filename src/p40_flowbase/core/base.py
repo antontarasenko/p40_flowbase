@@ -280,6 +280,30 @@ class DataObject(ABC):
 
     # ---- Public lifecycle methods --------------------------------------
 
+    def _check_make_preconditions(self, replace: bool) -> None:
+        """Shared pre-check for ``make`` / ``amake``."""
+        if self.exists() and not replace:
+            raise FileExistsError(
+                f"Object {self.object_stem} already exists in default format ({self.make_format.value}). "
+                f"Use replace=True to overwrite."
+            )
+        if replace:
+            self.delete()
+        self.local_dir.mkdir(parents=True, exist_ok=True)
+
+    def _emit_make_summary(self, dur_s: float) -> None:
+        """Shared make_summary emission for ``make`` / ``amake``."""
+        master_path = self.path_to_format(self.make_format).resolve()
+        kvs: dict[str, Any] = {
+            "object": self.object_stem,
+            "fmt": self.make_format.value,
+            "dur_s": f"{dur_s:.3f}",
+            "bytes": file_or_dir_size_bytes(master_path),
+            **self._make_summary(),
+            "path": str(master_path),
+        }
+        logger.info(format_summary("make", kvs))
+
     def make(self, replace: bool = False) -> None:
         """Create the master copy of the object in the default format.
 
@@ -290,16 +314,7 @@ class DataObject(ABC):
         :raises FileExistsError: If master copy exists and
             ``replace=False``.
         """
-        if self.exists() and not replace:
-            raise FileExistsError(
-                f"Object {self.object_stem} already exists in default format ({self.make_format.value}). "
-                f"Use replace=True to overwrite."
-            )
-
-        if replace:
-            self.delete()
-
-        self.local_dir.mkdir(parents=True, exist_ok=True)
+        self._check_make_preconditions(replace)
         with object_log_context(
             object_stem=self.object_stem,
             local_dir=self.local_dir,
@@ -311,17 +326,37 @@ class DataObject(ABC):
             except Exception:
                 logger.exception(f"make_failed | object={self.object_stem}")
                 raise
-            dt = time.perf_counter() - t0
-            master_path = self.path_to_format(self.make_format).resolve()
-            kvs: dict[str, Any] = {
-                "object": self.object_stem,
-                "fmt": self.make_format.value,
-                "dur_s": f"{dt:.3f}",
-                "bytes": file_or_dir_size_bytes(master_path),
-                **self._make_summary(),
-                "path": str(master_path),
-            }
-            logger.info(format_summary("make", kvs))
+            self._emit_make_summary(time.perf_counter() - t0)
+
+    async def amake(self, replace: bool = False) -> None:
+        """Async lifecycle entry; mirrors ``make()`` but awaits ``_amake()``.
+
+        Use this from async contexts (Dagster's running event loop, an
+        async test harness, etc.) where calling ``make()`` would crash
+        on its internal ``asyncio.run(_amake())`` for ``TableFromDB``
+        and similar async-native subclasses. Opens the same per-object
+        log context and emits the same ``make_summary`` line as ``make()``.
+
+        :param replace: If ``True``, delete existing master copy and
+            all format copies, then create the master copy anew. If
+            ``False``, raise when the master copy already exists.
+        :type replace: bool
+        :raises FileExistsError: If master copy exists and
+            ``replace=False``.
+        """
+        self._check_make_preconditions(replace)
+        with object_log_context(
+            object_stem=self.object_stem,
+            local_dir=self.local_dir,
+            phase="make",
+        ):
+            t0 = time.perf_counter()
+            try:
+                await self._amake()
+            except Exception:
+                logger.exception(f"make_failed | object={self.object_stem}")
+                raise
+            self._emit_make_summary(time.perf_counter() - t0)
 
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:
         """Create a copy of the object in a supported format using the master copy.

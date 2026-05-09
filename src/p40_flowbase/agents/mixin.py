@@ -476,7 +476,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                 await session.commit()
                 await session.refresh(task)
 
-            logger.error(f"OpenAI agent task failed: {e}")
+            logger.exception("OpenAI agent task failed")
 
         return task
 
@@ -495,7 +495,10 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             await session.commit()
 
         try:
-            allowed_tools = None
+            # Default to ``[]`` rather than ``None`` because
+            # ``claude_agent_sdk>=0.1.80`` calls ``list(allowed_tools)``
+            # unconditionally in its option-defaulting step.
+            allowed_tools: list[str] = []
             if task.allowed_tools:
                 allowed_tools = json.loads(task.allowed_tools)
 
@@ -587,7 +590,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                 await session.commit()
                 await session.refresh(task)
 
-            logger.error(f"Anthropic agent task failed: {e}")
+            logger.exception("Anthropic agent task failed")
 
         return task
 

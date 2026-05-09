@@ -36,12 +36,11 @@ or use a YAML file (e.g. ``replace.yaml``)::
 """
 
 import contextlib
-from enum import Enum
+from collections.abc import Iterable
+from enum import Enum, StrEnum
 from typing import Any
 
 import dagster as dg
-
-from p40_flowbase.logging import logger
 
 
 def partitions_from_versions(
@@ -116,6 +115,42 @@ class ReplaceResource(dg.ConfigurableResource):  # type: ignore[type-arg]
     replace: bool = False
 
 
+class ConvertFormatsResource(dg.ConfigurableResource):  # type: ignore[type-arg]
+    """Run-scoped override of which side formats each asset materializes.
+
+    When ``formats`` is non-empty, the asset factory ignores the
+    static ``convert_formats`` parameter passed to ``fb.asset(...)`` and
+    instead runs ``obj.convert(fmt)`` for every ``fmt.value`` in this
+    list that the asset's format enum supports. Formats not supported by
+    a given asset's enum are silently skipped, so a single global list
+    (e.g. ``["csv", "svg"]``) flows across heterogeneous assets:
+    ``csv`` hits Tables, ``svg`` hits Figures.
+
+    Empty (default) means "use each asset's static ``convert_formats``
+    parameter", or — when none was set and ``convert=False`` — produce
+    no side formats at all.
+
+    Override at launch time via ``--config-json``::
+
+        --config-json '{
+            "resources": {
+                "convert_formats": {"config": {"formats": ["csv", "svg"]}}
+            }
+        }'
+
+    From Python, the field accepts both plain strings and any
+    ``StrEnum`` member (``fb.TableFormat.CSV``, ``fb.FigureFormat.SVG``,
+    ...) — ``StrEnum`` is a subclass of ``str``, so the two forms are
+    interchangeable at runtime::
+
+        fb.ConvertFormatsResource(
+            formats=[fb.TableFormat.CSV, fb.FigureFormat.SVG],
+        )
+    """
+
+    formats: list[str] = []
+
+
 def asset(
     obj_class: type,
     partitions_def: dg.StaticPartitionsDefinition,
@@ -123,6 +158,7 @@ def asset(
     deps: list[Any] | None = None,
     retries: int = 0,
     convert: bool = False,
+    convert_formats: Iterable[StrEnum | str] | None = None,
     group_name: str | None = None,
 ) -> dg.AssetsDefinition:
     """Create a Dagster asset definition from a DataObject class.
@@ -142,13 +178,29 @@ def asset(
     :param retries: Number of retry passes for failed requests
         (DB mixin only).
     :type retries: int
-    :param convert: Whether to run format conversion after ``make``.
+    :param convert: Whether to materialize **every** supported side
+        format after ``make``. Mutually exclusive with
+        ``convert_formats``; the latter wins if both are set. The
+        run-scoped ``ConvertFormatsResource`` (when its ``formats`` is
+        non-empty) overrides both.
     :type convert: bool
+    :param convert_formats: Static per-asset list of format values to
+        materialize after ``make``. Accepts plain strings
+        (``["csv", "json"]``) and/or ``StrEnum`` members
+        (``[fb.TableFormat.CSV, fb.FigureFormat.SVG]``); members are
+        normalized to their string values at registration time.
+        Formats not supported by this asset's format enum are silently
+        skipped. Overridden by ``ConvertFormatsResource.formats`` at
+        run time when non-empty.
+    :type convert_formats: Iterable[StrEnum | str] | None
     :param group_name: Dagster asset group name.
     :type group_name: str | None
     :returns: Dagster ``AssetsDefinition``.
     :rtype: dg.AssetsDefinition
     """
+    static_formats: list[str] | None = (
+        [str(f) for f in convert_formats] if convert_formats is not None else None
+    )
     is_db = hasattr(obj_class, "create_tables")
     is_graph_db = hasattr(obj_class, "_populate_lane_step")
     has_requests = (
@@ -162,10 +214,13 @@ def asset(
         partitions_def=partitions_def,
         deps=deps or [],
         group_name=group_name,
-        required_resource_keys={"replace"},
+        required_resource_keys={"replace", "convert_formats"},
     )
     async def _asset(context: dg.AssetExecutionContext) -> None:
         replace = context.resources.replace.replace
+        runtime_formats: list[str] = [
+            str(f) for f in context.resources.convert_formats.formats
+        ]
         version = get_version_from_partition(
             context.partition_key,
             version_enum_class,
@@ -189,15 +244,32 @@ def asset(
         elif is_db:
             await obj.create_tables(replace=replace)
         else:
-            # Sync `obj.make()` would call `asyncio.run(_amake())` for
-            # `TableFromDB`, which crashes inside Dagster's running loop.
-            if replace:
-                obj.delete()
-            obj.local_dir.mkdir(parents=True, exist_ok=True)
-            await obj._amake()
-            logger.info(f"{obj.object_stem} created successfully")
+            # `obj.make()` is sync and would call `asyncio.run(_amake())`
+            # internally for ``TableFromDB``-style objects, which crashes
+            # inside Dagster's running loop. ``amake()`` is the async
+            # lifecycle entry that opens the per-object log context and
+            # emits ``make_summary`` exactly like ``make()`` does.
+            await obj.amake(replace=replace)
 
-        if convert:
+        # Resolution order for which side formats to materialize:
+        #   1. ConvertFormatsResource.formats (run-time override) wins.
+        #   2. Else the asset's static convert_formats=[...] list.
+        #   3. Else convert=True (legacy "all formats").
+        # In the first two cases, format strings not supported by this
+        # asset's enum are silently skipped, so a single global list
+        # works across heterogeneous assets.
+        formats_to_run = runtime_formats or static_formats
+        if formats_to_run:
+            fmt_class = type(obj.make_format)
+            for fmt in fmt_class:
+                if fmt == obj.make_format or fmt.value not in formats_to_run:
+                    continue
+                if replace:
+                    obj.convert(fmt, replace=True)
+                else:
+                    with contextlib.suppress(FileExistsError):
+                        obj.convert(fmt, replace=False)
+        elif convert:
             if replace:
                 obj.convert(replace=True)
             else:
