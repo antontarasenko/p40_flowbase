@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.6.0 (2026-05-10)
+
 - Add `fb.asset` decorator instead of `asset_*` attributes for Dagster on data objects
 
 ## 0.5.0 (2026-05-09)
