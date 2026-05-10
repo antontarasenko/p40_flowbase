@@ -15,6 +15,7 @@ from typing import (
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import DBFormat
+from p40_flowbase.dagster.wiring import DagsterAssetWiring
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import (
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
 
-class DB(DataObject):
+class DB(DataObject, DagsterAssetWiring):
     """Base class for database data objects using async SQLAlchemy and SQLModel.
 
     Database objects store data in SQLite databases with async support.

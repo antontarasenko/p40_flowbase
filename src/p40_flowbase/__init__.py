@@ -126,10 +126,22 @@ from p40_flowbase.dagster import (
     ConvertFormatsResource,
     DataObjectIOManager,
     ReplaceResource,
-    asset,
+    assets_from_classes,
+    assets_from_module,
     get_version_from_partition,
     partitions_from_versions,
+    print_dag,
 )
+from p40_flowbase.dagster.decorator import (
+    AUTO,
+    asset,
+)
+from p40_flowbase.dagster.lint import (
+    AssetDepsLintResult,
+    lint_asset_deps,
+    lint_asset_deps_all,
+)
+from p40_flowbase.dagster.wiring import DagsterAssetWiring
 from p40_flowbase.helpers import (
     extract_json_from_response,
     render_jinja_template,
@@ -209,8 +221,16 @@ __all__ = [
     "TableFromDB",
     "__version__",
     "apply_style",
+    "AUTO",
+    "AssetDepsLintResult",
+    "DagsterAssetWiring",
     "asset",
+    "assets_from_classes",
+    "assets_from_module",
     "checks",
+    "lint_asset_deps",
+    "lint_asset_deps_all",
+    "print_dag",
     "extract_json_from_response",
     "get_version_from_partition",
     "logger",

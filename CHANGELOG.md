@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Add `fb.asset` decorator instead of `asset_*` attributes for Dagster on data objects
+
 ## 0.5.0 (2026-05-09)
 
 - Add data checks to Table, Composite, DB classes via `checks` attribute

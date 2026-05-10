@@ -27,9 +27,10 @@ from p40_flowbase.core.base import (
     resolve_anchor_package,
 )
 from p40_flowbase.core.formats import DocumentFormat
+from p40_flowbase.dagster.wiring import DagsterAssetWiring
 
 
-class Document(DataObject):
+class Document(DataObject, DagsterAssetWiring):
     """Markdown-first document data object rendered from a Jinja template.
 
     Convention (zero-boilerplate template lookup)

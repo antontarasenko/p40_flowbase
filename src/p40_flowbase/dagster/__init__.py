@@ -36,11 +36,40 @@ or use a YAML file (e.g. ``replace.yaml``)::
 """
 
 import contextlib
-from collections.abc import Iterable
+import graphlib
+from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum, StrEnum
-from typing import Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
 
 import dagster as dg
+
+if TYPE_CHECKING:
+    from p40_flowbase.core.base import DataObject
+
+#: Override keys accepted by ``assets_from_classes(overrides=...)`` and
+#: ``print_dag(overrides=...)``. These are the user-facing names that match
+#: the ``@fb.asset(...)`` decorator parameters; ``_wiring_for`` translates
+#: them to the underlying ``asset_*`` ``ClassVar`` storage names.
+_OVERRIDE_KEYS: frozenset[str] = frozenset({
+    "deps",
+    "group",
+    "convert_formats",
+    "retries",
+    "convert",
+    "kwargs",
+})
+
+#: ``dg.asset(...)`` keyword arguments that ``_build_asset(...)`` already
+#: manages internally. Forbidden inside the ``**dagster_kwargs`` escape
+#: hatch and inside the ``asset_kwargs`` ``ClassVar``.
+_RESERVED_DG_ASSET_KWARGS: frozenset[str] = frozenset({
+    "name",
+    "partitions_def",
+    "deps",
+    "group_name",
+    "required_resource_keys",
+})
 
 
 def partitions_from_versions(
@@ -151,7 +180,7 @@ class ConvertFormatsResource(dg.ConfigurableResource):  # type: ignore[type-arg]
     formats: list[str] = []
 
 
-def asset(
+def _build_asset(
     obj_class: type,
     partitions_def: dg.StaticPartitionsDefinition,
     version_enum_class: type[Enum],
@@ -160,11 +189,14 @@ def asset(
     convert: bool = False,
     convert_formats: Iterable[StrEnum | str] | None = None,
     group_name: str | None = None,
+    **dagster_kwargs: Any,
 ) -> dg.AssetsDefinition:
-    """Create a Dagster asset definition from a DataObject class.
+    """Build a Dagster ``AssetsDefinition`` from a ``DataObject`` class.
 
-    Generates an ``@asset`` function that materializes the DataObject by
-    calling its ``make()`` or ``create_tables()`` method.
+    Internal helper called by ``assets_from_classes``. Users do not call
+    this directly -- they wire assets via ``@fb.asset(...)`` and then
+    feed the classes (or a module) to ``assets_from_classes`` /
+    ``assets_from_module``.
 
     :param obj_class: DataObject subclass to wrap.
     :type obj_class: type
@@ -195,9 +227,23 @@ def asset(
     :type convert_formats: Iterable[StrEnum | str] | None
     :param group_name: Dagster asset group name.
     :type group_name: str | None
+    :param dagster_kwargs: Extra keyword arguments forwarded to
+        ``@dg.asset(...)`` (e.g. ``tags``, ``owners``, ``metadata``,
+        ``code_version``, ``automation_condition``). The factory's
+        explicit kwargs (``name``, ``partitions_def``, ``deps``,
+        ``group_name``, ``required_resource_keys``) take precedence on
+        any key collision.
     :returns: Dagster ``AssetsDefinition``.
     :rtype: dg.AssetsDefinition
     """
+    conflicts = _RESERVED_DG_ASSET_KWARGS & dagster_kwargs.keys()
+    if conflicts:
+        raise ValueError(
+            f"fb.asset(...) manages {sorted(conflicts)}; do not pass them via "
+            f"**dagster_kwargs / asset_kwargs. Use the dedicated parameter "
+            f"(e.g. group_name= for group_name)."
+        )
+
     static_formats: list[str] | None = (
         [str(f) for f in convert_formats] if convert_formats is not None else None
     )
@@ -210,6 +256,7 @@ def asset(
     )
 
     @dg.asset(
+        **dagster_kwargs,
         name=obj_class.id,  # type: ignore[attr-defined]
         partitions_def=partitions_def,
         deps=deps or [],
@@ -276,4 +323,260 @@ def asset(
                 with contextlib.suppress(FileExistsError):
                     obj.convert(replace=False)
 
-    return _asset
+    # ``**dagster_kwargs: Any`` widens the @dg.asset overload set so pyright
+    # cannot narrow the decorated return; the runtime type is correct.
+    return _asset  # type: ignore[return-value]
+
+
+def _label(cls: type) -> str:
+    """Render a class label for error messages: ``QualName(id='...')``."""
+    obj_id = getattr(cls, "id", None)
+    base = cls.__qualname__
+    return f"{base}(id={obj_id!r})" if obj_id is not None else base
+
+
+def _wiring_for(
+    cls: type["DataObject"],
+    overrides: Mapping[type["DataObject"], Mapping[str, Any]] | None,
+) -> dict[str, Any]:
+    """Read effective asset wiring for ``cls``, applying per-call overrides.
+
+    Falls back through: per-call override (short key) -> class
+    ``asset_*`` ``ClassVar`` (storage name) -> default. Validates
+    override keys against ``_OVERRIDE_KEYS``.
+    """
+    over = (overrides or {}).get(cls, {})
+    bad = set(over.keys()) - _OVERRIDE_KEYS
+    if bad:
+        raise ValueError(
+            f"Unknown override keys for {_label(cls)}: {sorted(bad)}. "
+            f"Allowed: {sorted(_OVERRIDE_KEYS)}."
+        )
+
+    def pick(short_key: str, storage_attr: str, default: Any) -> Any:
+        if short_key in over:
+            return over[short_key]
+        return getattr(cls, storage_attr, default)
+
+    return {
+        "deps": tuple(pick("deps", "asset_deps", ()) or ()),
+        "group": pick("group", "asset_group", None),
+        "convert_formats": tuple(
+            pick("convert_formats", "asset_convert_formats", ()) or ()
+        ),
+        "retries": pick("retries", "asset_retries", 0),
+        "convert": pick("convert", "asset_convert", False),
+        "kwargs": dict(pick("kwargs", "asset_kwargs", {}) or {}),
+    }
+
+
+def assets_from_classes(
+    classes: Sequence[type["DataObject"]],
+    *,
+    partitions_def: dg.StaticPartitionsDefinition,
+    version_enum_class: type[Enum],
+    overrides: Mapping[type["DataObject"], Mapping[str, Any]] | None = None,
+) -> list[dg.AssetsDefinition]:
+    """Build one ``dg.AssetsDefinition`` per class in dependency order.
+
+    Reads asset wiring off each class's ``ClassVar``s
+    (``asset_deps``, ``asset_group``, ``asset_convert_formats``,
+    ``asset_retries``, ``asset_convert``, ``asset_kwargs``) instead of
+    requiring a separate per-asset ``fb.asset(...)`` call site.
+    Topologically sorts ``classes`` by ``asset_deps`` so each class's
+    deps are already-built ``AssetsDefinition``\\ s by the time it is
+    wrapped. Iteration over ``asset_deps`` preserves the user-declared
+    tuple order, so ``dg.asset(deps=[...])`` arguments are deterministic
+    across runs (no hash-randomization).
+
+    The DAG is built only over the classes you pass in. A class listed in
+    another class's ``asset_deps`` but missing from ``classes`` is an
+    error: it would otherwise produce a Dagster asset graph with a
+    dangling node and silently confuse selection. Duplicate classes in
+    ``classes`` are likewise an error.
+
+    :param classes: Subset of ``DataObject`` subclasses to register as
+        Dagster assets.
+    :type classes: Sequence[type[DataObject]]
+    :param partitions_def: Partition definition shared by every asset.
+    :type partitions_def: dg.StaticPartitionsDefinition
+    :param version_enum_class: Enum class for partition <-> version
+        resolution; forwarded to ``asset(...)``.
+    :type version_enum_class: type[Enum]
+    :param overrides: Per-class wiring overrides keyed by class. Each
+        override mapping may set any of ``asset_deps``, ``asset_group``,
+        ``asset_convert_formats``, ``asset_retries``, ``asset_convert``,
+        ``asset_kwargs`` to override the corresponding ``ClassVar`` for
+        this build only. Useful for parallel prod/staging/backfill
+        ``Definitions`` over the same classes. Unknown keys raise.
+    :type overrides: Mapping[type[DataObject], Mapping[str, Any]] | None
+    :returns: Built ``AssetsDefinition``\\ s, in topological order.
+    :rtype: list[dg.AssetsDefinition]
+    :raises ValueError: If ``classes`` contains duplicates, if an
+        ``asset_deps`` entry is not in ``classes``, if the deps form a
+        cycle, or if ``overrides`` contains unknown keys.
+    """
+    seen: dict[type[DataObject], int] = {}
+    duplicates: list[type[DataObject]] = []
+    for cls in classes:
+        seen[cls] = seen.get(cls, 0) + 1
+        if seen[cls] == 2:
+            duplicates.append(cls)
+    if duplicates:
+        raise ValueError(
+            "Duplicate classes passed to assets_from_classes(): "
+            f"{[_label(c) for c in duplicates]}."
+        )
+
+    class_set = set(classes)
+    wiring: dict[type[DataObject], dict[str, Any]] = {
+        cls: _wiring_for(cls, overrides) for cls in classes
+    }
+    graph: dict[type[DataObject], tuple[type[DataObject], ...]] = {}
+    for cls in classes:
+        deps = wiring[cls]["deps"]
+        for dep in deps:
+            if dep not in class_set:
+                raise ValueError(
+                    f"{_label(cls)}.asset_deps references "
+                    f"{_label(dep)} ({dep.__module__}), which is not in "
+                    f"the classes passed to assets_from_classes(). "
+                    f"Add it to the classes list or remove the dep."
+                )
+        graph[cls] = deps
+
+    sorter = graphlib.TopologicalSorter(graph)
+    try:
+        ordered = tuple(sorter.static_order())
+    except graphlib.CycleError as exc:
+        cycle = " -> ".join(_label(c) for c in exc.args[1])
+        raise ValueError(f"asset_deps form a cycle: {cycle}") from exc
+
+    built: dict[type[DataObject], dg.AssetsDefinition] = {}
+    for cls in ordered:
+        w = wiring[cls]
+        built[cls] = _build_asset(
+            cls,
+            partitions_def=partitions_def,
+            version_enum_class=version_enum_class,
+            deps=[built[d] for d in graph[cls]] or None,
+            retries=w["retries"],
+            convert=w["convert"],
+            convert_formats=w["convert_formats"] or None,
+            group_name=w["group"],
+            **w["kwargs"],
+        )
+    return [built[cls] for cls in ordered]
+
+
+def print_dag(
+    classes: Sequence[type["DataObject"]],
+    *,
+    overrides: Mapping[type["DataObject"], Mapping[str, Any]] | None = None,
+) -> str:
+    """Render an at-a-glance manifest of the asset DAG.
+
+    Reads the same wiring ``ClassVar``s as ``assets_from_classes`` (and
+    honors per-call ``overrides``), topo-sorts, then renders a fixed-
+    width table:
+
+    .. code-block:: text
+
+        asset                 deps                   group  formats
+        weather_input_cities  -                      -      -
+        weather_http_db       weather_input_cities   -      -
+        ...
+
+    Restores the at-a-glance DAG view that lived in the old per-asset
+    ``definitions.py``. Reviewers can drop ``print(fb.print_dag(ASSET_CLASSES))``
+    next to the ``dg.Definitions(...)`` call to keep the manifest visible.
+
+    :param classes: ``DataObject`` subclasses to render.
+    :param overrides: Same shape as ``assets_from_classes(overrides=...)``.
+        Useful for previewing the effective DAG of a staging variant.
+    :returns: Multiline string ready to ``print``.
+    """
+    seen: set[type[DataObject]] = set()
+    duplicates: list[type[DataObject]] = []
+    for cls in classes:
+        if cls in seen:
+            duplicates.append(cls)
+        seen.add(cls)
+    if duplicates:
+        raise ValueError(
+            f"Duplicate classes passed to print_dag(): "
+            f"{[_label(c) for c in duplicates]}."
+        )
+
+    wiring = {cls: _wiring_for(cls, overrides) for cls in classes}
+    graph = {cls: wiring[cls]["deps"] for cls in classes}
+
+    sorter = graphlib.TopologicalSorter(graph)
+    try:
+        ordered = tuple(sorter.static_order())
+    except graphlib.CycleError as exc:
+        cycle = " -> ".join(_label(c) for c in exc.args[1])
+        raise ValueError(f"asset_deps form a cycle: {cycle}") from exc
+
+    rows: list[tuple[str, str, str, str, str]] = [
+        ("asset", "deps", "group", "formats", "kwargs"),
+    ]
+    for cls in ordered:
+        w = wiring[cls]
+        deps_str = ", ".join(
+            getattr(d, "id", d.__qualname__) for d in graph[cls]
+        ) or "-"
+        group_str = w["group"] or "-"
+        fmts_str = ", ".join(str(f) for f in w["convert_formats"]) or "-"
+        kwargs_str = ", ".join(sorted(w["kwargs"])) or "-"
+        rows.append((
+            getattr(cls, "id", cls.__qualname__),
+            deps_str,
+            group_str,
+            fmts_str,
+            kwargs_str,
+        ))
+
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+    lines = [
+        "  ".join(cell.ljust(w) for cell, w in zip(row, widths, strict=True)).rstrip()
+        for row in rows
+    ]
+    return "\n".join(lines)
+
+
+def assets_from_module(
+    module: ModuleType,
+    *,
+    partitions_def: dg.StaticPartitionsDefinition,
+    version_enum_class: type[Enum],
+    overrides: Mapping[type["DataObject"], Mapping[str, Any]] | None = None,
+) -> list[dg.AssetsDefinition]:
+    """Build assets from every concrete ``DagsterAssetWiring`` subclass
+    declared inside ``module`` (or any sub-module of it).
+
+    Discovery walks ``DagsterAssetWiring._registry`` (populated by the
+    mixin's ``__init_subclass__`` hook at class-body evaluation), filters
+    to classes whose ``__module__`` lives within ``module`` 's package
+    namespace, then forwards to :func:`assets_from_classes`.
+
+    Use this when one Python package == one Dagster repo's worth of
+    assets, and you don't want to hand-maintain the explicit
+    ``ASSET_CLASSES`` tuple.
+
+    :param module: The module (or package) whose ``DataObject``
+        subclasses should be collected.
+    :param partitions_def: Forwarded to ``assets_from_classes``.
+    :param version_enum_class: Forwarded to ``assets_from_classes``.
+    :param overrides: Forwarded to ``assets_from_classes``.
+    :returns: Built ``AssetsDefinition``\\ s, in topological order.
+    """
+    from p40_flowbase.dagster.wiring import DagsterAssetWiring
+
+    classes = DagsterAssetWiring.registered_for_module(module.__name__)
+    return assets_from_classes(
+        classes,
+        partitions_def=partitions_def,
+        version_enum_class=version_enum_class,
+        overrides=overrides,
+    )

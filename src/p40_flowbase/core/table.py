@@ -24,11 +24,12 @@ import pydantic as pyd
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.database import DB
 from p40_flowbase.core.formats import TableFormat
+from p40_flowbase.dagster.wiring import DagsterAssetWiring
 from p40_flowbase.helpers.arrow_schema import validate_arrow_against_pydantic
 from p40_flowbase.helpers.jinja_templates import render_jinja_template
 
 
-class Table(DataObject):
+class Table(DataObject, DagsterAssetWiring):
     """Tabular data object backed by a Parquet master file.
 
     Convention (zero-boilerplate ``_make``)

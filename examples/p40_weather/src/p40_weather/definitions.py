@@ -1,21 +1,20 @@
 """Dagster ``Definitions`` for the p40_weather pipeline.
+
+DAG topology (deps, group, convert formats, retries) is declared on each
+``DataObject`` subclass via ``asset_*`` ``ClassVar``s in
+``objects/weather.py``. ``fb.assets_from_module`` discovers every
+concrete subclass in the ``p40_weather.objects`` package via the
+``DagsterAssetWiring._registry`` populated at class-body evaluation,
+so this file owns only: settings application and resources.
 """
 
 import dagster as dg
 import p40_flowbase as fb
 
+from p40_weather import objects
 from p40_weather.config import settings
 from p40_weather.objects import (
     WeatherCityNarrativeAgentDB,
-    WeatherCityNarrativeTable,
-    WeatherDoc,
-    WeatherFigure,
-    WeatherHourlyTable,
-    WeatherHTTPDB,
-    WeatherInputCities,
-    WeatherResponseFiles,
-    WeatherSummaryTable,
-    WeatherVersionConfig,
     WeatherVersions,
 )
 
@@ -25,52 +24,14 @@ WeatherCityNarrativeAgentDB.set_api_keys(
     anthropic_api_key=settings.anthropic_api_key,
 )
 
-partitions = fb.partitions_from_versions(
-    (WeatherVersions.MAIN, WeatherVersions.BACKFILL_2025),
-)
-common = {
-    "partitions_def": partitions,
-    "version_enum_class": WeatherVersions,
-}
-
-version_config = fb.asset(WeatherVersionConfig, **common)
-cities = fb.asset(WeatherInputCities, **common)
-http_db = fb.asset(WeatherHTTPDB, deps=[cities], **common)
-files = fb.asset(WeatherResponseFiles, deps=[http_db], **common)
-hourly = fb.asset(WeatherHourlyTable, deps=[files], **common)
-summary = fb.asset(
-    WeatherSummaryTable,
-    deps=[hourly],
-    convert_formats=[fb.TableFormat.TSV],
-    **common,
-)
-narrative_db = fb.asset(WeatherCityNarrativeAgentDB, deps=[summary], **common)
-narrative = fb.asset(
-    WeatherCityNarrativeTable,
-    deps=[narrative_db],
-    **common,
-)
-figure = fb.asset(WeatherFigure, deps=[summary], **common)
-doc = fb.asset(
-    WeatherDoc,
-    deps=[figure, summary, narrative],
-    convert_formats=[fb.DocumentFormat.PDF],
-    **common,
-)
-
 defs = dg.Definitions(
-    assets=[
-        version_config,
-        cities,
-        http_db,
-        files,
-        hourly,
-        summary,
-        narrative_db,
-        narrative,
-        figure,
-        doc,
-    ],
+    assets=fb.assets_from_module(
+        objects,
+        partitions_def=fb.partitions_from_versions(
+            (WeatherVersions.MAIN, WeatherVersions.BACKFILL_2025),
+        ),
+        version_enum_class=WeatherVersions,
+    ),
     resources={
         "replace": fb.ReplaceResource(),
         "convert_formats": fb.ConvertFormatsResource(),

@@ -12,9 +12,10 @@ from matplotlib.figure import Figure as MplFigure
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import FigureFormat
+from p40_flowbase.dagster.wiring import DagsterAssetWiring
 
 
-class Figure(DataObject):
+class Figure(DataObject, DagsterAssetWiring):
     """Base class for single figure data objects.
 
     Figure objects store matplotlib figures.

@@ -13,13 +13,14 @@ from typing import (
 
 from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.formats import CompositeFormat
+from p40_flowbase.dagster.wiring import DagsterAssetWiring
 from p40_flowbase.helpers.file_stats import (
     count_files,
     dir_size_bytes,
 )
 
 
-class Composite(DataObject):
+class Composite(DataObject, DagsterAssetWiring):
     """Base class for composite data objects with multiple files stored as directory.
 
     Composite objects store multiple files in a directory structure.

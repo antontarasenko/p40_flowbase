@@ -110,6 +110,7 @@ class VersionConfigRow(pyd.BaseModel):
     )
 
 
+@fb.asset()
 class WeatherVersionConfig(fb.Table):
     """Snapshot of the active ``WeatherVersion``'s fields as key-value rows.
 
@@ -179,6 +180,7 @@ class CityRow(pyd.BaseModel):
     )
 
 
+@fb.asset()
 class WeatherInputCities(fb.Table):
     """Per-version city catalog, materialized from the TSV resource.
 
@@ -229,6 +231,7 @@ WeatherHTTPRequestExtra = fb.make_http_request_extra_table(
 )
 
 
+@fb.asset(deps=fb.AUTO)
 class WeatherHTTPDB(fb.HTTPDB):
     """SQLite of HTTP requests against Open-Meteo, one row per city.
 
@@ -318,6 +321,7 @@ def _slugify(name: str) -> str:
     return name.lower().replace(" ", "_")
 
 
+@fb.asset(deps=fb.AUTO)
 class WeatherResponseFiles(fb.Composite):
     """One ``<city>.json`` file per successful HTTP response.
 
@@ -412,6 +416,7 @@ class HourlyRow(pyd.BaseModel):
     )
 
 
+@fb.asset(deps=fb.AUTO)
 class WeatherHourlyTable(fb.Table):
     """Hourly long-form table built from the per-city JSON files."""
 
@@ -497,6 +502,7 @@ class SummaryRow(pyd.BaseModel):
     )
 
 
+@fb.asset(deps=fb.AUTO, convert_formats=[fb.TableFormat.TSV])
 class WeatherSummaryTable(fb.Table):
     """Per-city aggregates rendered from a DuckDB+Jinja SQL template."""
 
@@ -561,6 +567,7 @@ def _narrative_prompt(row: dict[str, Any]) -> str:
     )
 
 
+@fb.asset(deps=fb.AUTO)
 class WeatherCityNarrativeAgentDB(fb.AgentDB):
     """One ``fb.AgentTask`` per city; writes a one-sentence weather narrative.
 
@@ -678,6 +685,7 @@ class NarrativeRow(pyd.BaseModel):
     )
 
 
+@fb.asset(deps=fb.AUTO)
 class WeatherCityNarrativeTable(fb.TableFromDB[WeatherCityNarrativeAgentDB]):
     """Flatten the agent DB into a ``(city, narrative, model_id, cost_usd)`` table."""
 
@@ -723,6 +731,7 @@ class WeatherCityNarrativeTable(fb.TableFromDB[WeatherCityNarrativeAgentDB]):
 ################################################################################
 
 
+@fb.asset(deps=fb.AUTO)
 class WeatherFigure(fb.Figure):
     """Bar chart of mean temperature by city."""
 
@@ -777,6 +786,7 @@ def _markdown_table(arrow: pa.Table) -> str:
     return buf.getvalue()
 
 
+@fb.asset(deps=fb.AUTO, convert_formats=[fb.DocumentFormat.PDF])
 class WeatherDoc(fb.Document):
     """Markdown report: summary table + embedded SVG + agent narratives."""
 
