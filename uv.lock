@@ -2041,10 +2041,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-agents = [
-    { name = "claude-agent-sdk" },
-    { name = "openai-agents" },
-]
 all = [
     { name = "claude-agent-sdk" },
     { name = "langgraph" },
@@ -2091,8 +2087,7 @@ requires-dist = [
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.1.10" },
     { name = "matplotlib", specifier = "~=3.10.5" },
     { name = "openai-agents", marker = "extra == 'openai-agents'", specifier = ">=0.17.0" },
-    { name = "p40-flowbase", extras = ["agents", "langgraph"], marker = "extra == 'all'" },
-    { name = "p40-flowbase", extras = ["claude-agent-sdk", "openai-agents"], marker = "extra == 'agents'" },
+    { name = "p40-flowbase", extras = ["claude-agent-sdk", "langgraph", "openai-agents"], marker = "extra == 'all'" },
     { name = "pyarrow", specifier = "~=22.0.0" },
     { name = "pydantic", specifier = "~=2.12.4" },
     { name = "pydantic-settings", specifier = "~=2.10.1" },
@@ -2100,7 +2095,7 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = "~=2.0.45" },
     { name = "sqlmodel", specifier = "~=0.0.31" },
 ]
-provides-extras = ["claude-agent-sdk", "openai-agents", "langgraph", "agents", "all"]
+provides-extras = ["claude-agent-sdk", "openai-agents", "langgraph", "all"]
 
 [package.metadata.requires-dev]
 dev = [
