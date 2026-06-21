@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.7.0 (2026-06-21)
+
 - Prepare package for publication on GitHub
 
 ## 0.6.1 (2026-06-21)
