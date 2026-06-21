@@ -71,6 +71,19 @@ _RESERVED_DG_ASSET_KWARGS: frozenset[str] = frozenset({
     "required_resource_keys",
 })
 
+#: Definition-time Dagster tag + metadata stamped onto any asset whose
+#: class sets ``asset_rebuildable = False`` (e.g. ``ManualComposite``).
+#: They flag in the UI that the asset's data is managed out-of-band and
+#: the rebuild paths (replace / convert / delete) are disabled.
+_NOT_REBUILDABLE_TAGS: Mapping[str, str] = {"rebuildable": "false"}
+_NOT_REBUILDABLE_METADATA: Mapping[str, Any] = {
+    "rebuildable": False,
+    "lifecycle": (
+        "Not rebuildable: data is managed out-of-band (e.g. hand-uploaded "
+        "files). replace, convert, and delete are disabled."
+    ),
+}
+
 
 def partitions_from_versions(
     versions: tuple[Enum, ...],
@@ -243,6 +256,19 @@ def _build_asset(
             f"**dagster_kwargs / asset_kwargs. Use the dedicated parameter "
             f"(e.g. group_name= for group_name)."
         )
+
+    if not getattr(obj_class, "asset_rebuildable", True):
+        # Mark out-of-band assets (e.g. ManualComposite) so the UI flags
+        # them and a global rebuild skips them. User-supplied tags /
+        # metadata win on key collisions.
+        dagster_kwargs = {
+            **dagster_kwargs,
+            "tags": {**_NOT_REBUILDABLE_TAGS, **dagster_kwargs.get("tags", {})},
+            "metadata": {
+                **_NOT_REBUILDABLE_METADATA,
+                **dagster_kwargs.get("metadata", {}),
+            },
+        }
 
     static_formats: list[str] | None = (
         [str(f) for f in convert_formats] if convert_formats is not None else None

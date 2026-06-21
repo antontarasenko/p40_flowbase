@@ -46,6 +46,12 @@ class DagsterAssetWiring:
         ``make`` -- the legacy "all formats" shortcut.
     :cvar asset_kwargs: Generic escape hatch forwarded to
         ``@dg.asset(**asset_kwargs)``.
+    :cvar asset_rebuildable: Whether a global run can recreate this
+        asset from scratch. Unlike the others, this is **intrinsic** to
+        the class (set by the subclass, not by ``@fb.asset(...)``):
+        ``ManualComposite`` sets it ``False`` because its files are
+        added by hand. When ``False``, ``assets_from_classes`` stamps a
+        definition-time "not rebuildable" tag + metadata on the asset.
     """
 
     asset_deps: ClassVar[tuple[type["DataObject"], ...]] = ()
@@ -54,6 +60,7 @@ class DagsterAssetWiring:
     asset_retries: ClassVar[int] = 0
     asset_convert: ClassVar[bool] = False
     asset_kwargs: ClassVar[Mapping[str, Any]] = {}
+    asset_rebuildable: ClassVar[bool] = True
 
     #: Classes registered by ``@fb.asset(...)``, in decoration order.
     #: Read by ``fb.assets_from_module(...)`` via

@@ -3,9 +3,10 @@
 import json
 from unittest.mock import patch
 
-import p40_flowbase as fb
 import pytest
 import sqlmodel as sm
+
+import p40_flowbase as fb
 
 
 @pytest.fixture
@@ -37,6 +38,7 @@ def test_imports():
     from p40_weather.definitions import defs
     from p40_weather.helpers import build_forecast_url
     from p40_weather.objects import (
+        WeatherContextFiles,
         WeatherDoc,
         WeatherFigure,
         WeatherHourlyTable,
@@ -53,6 +55,7 @@ def test_imports():
     assert build_forecast_url(latitude=0.0, longitude=0.0).startswith(
         "https://api.open-meteo.com/v1/forecast?"
     )
+    assert WeatherContextFiles.id == "weather_context_files"
     assert WeatherInputCities.id == "weather_input_cities"
     from p40_weather.objects import WeatherVersionConfig
     assert WeatherVersionConfig.id == "weather_version_config"
@@ -62,6 +65,35 @@ def test_imports():
     assert WeatherSummaryTable.id == "weather_summary_table"
     assert WeatherFigure.id == "weather_figure"
     assert WeatherDoc.id == "weather_doc"
+
+
+def test_context_files_manual_composite(local_data):
+    """``WeatherContextFiles`` materializes empty and is protected."""
+    from p40_weather.objects import WeatherContextFiles, WeatherVersions
+
+    obj = WeatherContextFiles(WeatherVersions.MAIN)
+    obj.make()
+
+    # Populated out-of-band, so make() succeeds on an empty directory.
+    files_dir = obj.path_to_format(fb.CompositeFormat.FILES)
+    assert files_dir.is_dir()
+    assert not any(files_dir.iterdir())
+
+    # A dated entry uploaded by hand survives make(replace=True): replace
+    # is neutralized and make never wipes the directory.
+    entry = files_dir / "260614_project_description"
+    entry.mkdir()
+    (entry / "overview.md").write_text("project description")
+    obj.make(replace=True)
+    assert (entry / "overview.md").read_text() == "project description"
+
+    # convert is a no-op: .files stays the only format.
+    obj.convert(fb.CompositeFormat.ZIP)
+    assert not obj.path_to_format(fb.CompositeFormat.ZIP).exists()
+
+    # delete refuses.
+    with pytest.raises(RuntimeError, match="Refusing to delete"):
+        obj.delete()
 
 
 def test_end_to_end_with_mocked_http(local_data):

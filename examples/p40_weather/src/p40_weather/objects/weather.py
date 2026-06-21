@@ -25,12 +25,12 @@ import matplotlib
 matplotlib.use("Agg")  # headless: Dagster runs each asset in a non-GUI subprocess
 
 import matplotlib.pyplot as plt  # must follow matplotlib.use(...)
-import p40_flowbase as fb
 import pyarrow as pa
 import pydantic as pyd
 import sqlmodel as sm
-from p40_flowbase import checks as ck
 
+import p40_flowbase as fb
+from p40_flowbase import checks as ck
 from p40_weather.helpers import build_forecast_url
 
 ################################################################################
@@ -85,6 +85,49 @@ def _wv(version: Enum) -> WeatherVersion:
         msg = f"Expected WeatherVersion, got {type(value).__name__}"
         raise TypeError(msg)
     return value
+
+
+################################################################################
+# ManualComposite: hand-authored project context for the whole module
+################################################################################
+
+
+@fb.asset()
+class WeatherContextFiles(fb.ManualComposite):
+    """Hand-uploaded project context for the whole module.
+
+    A ``ManualComposite`` holding the module author's description of the
+    project: what the pipeline does, where the data comes from, and any
+    caveats. ``make`` only ensures an empty ``.files`` directory exists;
+    nothing in the repo regenerates it. The content is added by hand
+    (copied in, or pulled from object storage out-of-band), so the
+    object materializes empty and you populate it yourself.
+
+    Organize ``.files`` as an **append-only series of dated entries**,
+    one subfolder per update::
+
+        <YYMMDD>_<title>/
+
+    e.g. ``260614_project_description/`` then ``260621_status_update/``.
+    Each update gets its own subfolder; older entries are never
+    rewritten, so ``.files`` reads as a chronological log of the module's
+    context.
+
+    Because it is a ``ManualComposite`` the curated history cannot be
+    silently lost: ``delete`` raises, ``replace`` is a no-op, and
+    ``convert`` is blocked so ``.files`` stays the only format (a
+    ``.zip`` snapshot would drift, since the object is never rebuilt).
+    In the Dagster graph it is a root asset tagged ``rebuildable=false``.
+    """
+
+    id: ClassVar[str] = "weather_context_files"
+    description: ClassVar[str] = (
+        "Hand-uploaded project description/context for the module."
+    )
+    supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
+    # Populated out-of-band, so make() must succeed on an empty directory;
+    # only guard against truncated / 0-byte uploads.
+    checks: ClassVar[tuple[fb.Check, ...]] = (ck.NoEmptyFiles(),)
 
 
 ################################################################################

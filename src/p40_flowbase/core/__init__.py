@@ -4,7 +4,10 @@ from p40_flowbase.core.base import (
     DataObject,
     DataObjectVersion,
 )
-from p40_flowbase.core.composite import Composite
+from p40_flowbase.core.composite import (
+    Composite,
+    ManualComposite,
+)
 from p40_flowbase.core.database import DB
 from p40_flowbase.core.document import Document
 from p40_flowbase.core.figure import Figure
@@ -41,6 +44,7 @@ __all__ = [
     "DocumentFormat",
     "Figure",
     "FigureFormat",
+    "ManualComposite",
     "Model",
     "ModelFormat",
     "Table",

@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Add `ManualComposite`: a `Composite` for hand-uploaded files
+
 ## 0.6.0 (2026-05-10)
 
 - Add `fb.asset` decorator instead of `asset_*` attributes for Dagster on data objects

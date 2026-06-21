@@ -1,8 +1,9 @@
 """p40_flowbase — single-dependency data processing framework.
 
 Pipelines are built from ``DataObject`` subclasses: ``Table``,
-``Composite``, ``DB`` (with ``HTTPDB`` / ``LLMDB`` / ``AgentDB``
-mixins), ``Document``, ``Figure``, ``Model``. Every object exposes the
+``Composite`` (and ``ManualComposite`` for hand-uploaded files),
+``DB`` (with ``HTTPDB`` / ``LLMDB`` / ``AgentDB`` mixins),
+``Document``, ``Figure``, ``Model``. Every object exposes the
 same three-method lifecycle (``make`` / ``convert`` / ``delete``) and
 ships a per-object log file at ``<local_dir>/<object_stem>.meta.log``.
 Dagster asset wrappers are first-class: ``fb.asset(MyTable, …)`` turns
@@ -37,6 +38,28 @@ Every data object exposes the same three methods::
     t.make()                        # build the parquet master file
     t.convert(TableFormat.CSV)      # add a CSV side-format
     t.delete()                      # remove all on-disk artifacts
+
+Manual (hand-uploaded) inputs
+-----------------------------
+
+``ManualComposite`` is a ``Composite`` for raw material added by hand
+rather than built by a pipeline step (emails, exports, S3 pulls). Its
+``make`` only ensures an empty ``.files`` directory; the files are
+copied in out-of-band and left alone. The rebuild paths are disabled so
+the curated files are never lost or duplicated: ``delete`` raises,
+``replace=True`` is a no-op, and ``convert`` is blocked so ``.files``
+stays the only format (a ``.zip`` snapshot would drift, since the object
+is never rebuilt to refresh it). Subclass it and add ``@fb.asset(...)``
+like any other object; in the Dagster UI the asset is tagged
+``rebuildable=false`` so a global replace/convert run skips it::
+
+    import p40_flowbase as fb
+
+    @fb.asset(group="uploads")
+    class RawDataRoom(fb.ManualComposite):
+        id = "raw_dataroom_260616"
+        description = "Hand-uploaded data-room files."
+        supported_versions = (V.MAIN,)
 
 Run as a Dagster pipeline
 -------------------------
@@ -110,6 +133,7 @@ from p40_flowbase.core import (
     DocumentFormat,
     Figure,
     FigureFormat,
+    ManualComposite,
     Model,
     ModelFormat,
     Table,
@@ -177,6 +201,7 @@ __version__ = version("p40_flowbase")
 
 __all__ = [
     "AGENT_SUPPORTED_PROVIDERS",
+    "AUTO",
     "DB",
     "HTTPDB",
     "LLMDB",
@@ -188,6 +213,7 @@ __all__ = [
     "AgentTaskExtra",
     "AgentTaskGroup",
     "AgentToolCall",
+    "AssetDepsLintResult",
     "BaseFlowSettings",
     "Check",
     "CheckFailedError",
@@ -195,6 +221,7 @@ __all__ = [
     "CompositeFormat",
     "ConvertFormatsResource",
     "DBFormat",
+    "DagsterAssetWiring",
     "DataObject",
     "DataObjectIOManager",
     "DataObjectVersion",
@@ -210,6 +237,7 @@ __all__ = [
     "LLMRequest",
     "LLMRequestExtra",
     "LLMRequestGroup",
+    "ManualComposite",
     "Model",
     "ModelFormat",
     "ModelVersion",
@@ -221,18 +249,14 @@ __all__ = [
     "TableFromDB",
     "__version__",
     "apply_style",
-    "AUTO",
-    "AssetDepsLintResult",
-    "DagsterAssetWiring",
     "asset",
     "assets_from_classes",
     "assets_from_module",
     "checks",
-    "lint_asset_deps",
-    "lint_asset_deps_all",
-    "print_dag",
     "extract_json_from_response",
     "get_version_from_partition",
+    "lint_asset_deps",
+    "lint_asset_deps_all",
     "logger",
     "make_agent_task_extra_table",
     "make_agent_task_group_table",
@@ -241,6 +265,7 @@ __all__ = [
     "make_llm_request_extra_table",
     "make_llm_request_group_table",
     "partitions_from_versions",
+    "print_dag",
     "render_jinja_template",
     "safe_path_component",
 ]

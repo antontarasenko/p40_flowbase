@@ -138,6 +138,7 @@ tail -f $LOCAL_DATA/weather_city_narrative_agent_db-main/weather_city_narrative_
 
 | Class | Output | Notes |
 |---|---|---|
+| `WeatherContextFiles(fb.ManualComposite)` | `.files` of hand-uploaded project context as dated `<YYMMDD>_<title>/` entries | Standalone root asset; materializes an empty `.files` you populate by hand. `delete`/`replace`/`convert` are disabled and the Dagster asset is tagged `rebuildable=false`. |
 | `WeatherVersionConfig(fb.Table)` | Two-column `(key, value)` parquet of the active `WeatherVersion`'s fields | Snapshot of version metadata at run time; auto-tracks new fields via `dataclasses.asdict`. |
 | `WeatherInputCities(fb.Table)` | `(name, latitude, longitude)` parquet | Reads `resources/versions/weather_versions/cities-<id>.tsv`. Lifting the catalog out of `WeatherVersions` keeps the enum import-time pure. |
 | `WeatherHTTPDB(fb.HTTPDB)` | SQLite of HTTP requests + custom `WeatherHTTPRequestGroup` (per-run audit) + `WeatherHTTPRequestExtra` (per-request city metadata) | One row per `(version, city)`; cities read from `WeatherInputCities(version).df` |
@@ -158,7 +159,40 @@ cities → http_db → files → hourly → summary ─┬→ narrative_db → n
                                              └→ figure ──────────────────→ doc
 ```
 
-`version_config` is a leaf (no deps); it just persists the version snapshot alongside the rest of the run.
+`version_config` and `context_files` are standalone roots (no deps, nothing depends on them); they persist the version snapshot and the hand-authored context alongside the rest of the run.
+
+## Manual context files (`ManualComposite`)
+
+`WeatherContextFiles` is the canonical use of `fb.ManualComposite`: a place to put manually created files inside a purpose-built module, primarily the project description and context for the whole module.
+
+`make` only ensures an empty `.files` directory; nothing in the repo regenerates it. You populate it **by hand**, out of band: copy files in, or pull them from object storage. The object materializes empty and waits for content.
+
+Organize `.files` as an **append-only series of dated entries**, one subfolder per update:
+
+```
+weather_context_files-main.files/
+├── 260614_project_description/
+│   ├── overview.md
+│   └── data_sources.md
+└── 260621_status_update/
+    └── status.md
+```
+
+Each update (a project description, a status report, a data-room drop, a design note) gets its own `<YYMMDD>_<title>/` subfolder; older entries are never rewritten, so `.files` reads as a chronological log of the module's context. Drop a new dated entry in whenever the context changes. The materialized object is the source of truth, so the content lives in your data root (`$LOCAL_DATA/weather_context_files-<version>/...`), not in the repo:
+
+```sh
+ENTRY="$LOCAL_DATA/weather_context_files-main/weather_context_files-main.files/260614_project_description"
+mkdir -p "$ENTRY"
+cp project_description.md "$ENTRY/overview.md"
+```
+
+The point of `ManualComposite` over a plain `Composite` is that hand-curated material must not be silently lost or rebuilt:
+
+- `delete()` raises (remove by hand if you really mean it).
+- `make(replace=True)` is a no-op, so a global Dagster replace run cannot wipe the files.
+- `convert()` is blocked, so `.files` stays the only format. A `.zip` snapshot would drift, since the object is never rebuilt to refresh it.
+
+In the Dagster UI the asset is tagged `rebuildable=false` (plus a `lifecycle` metadata note), so it is visibly skipped by a global replace/convert run. Subclass `fb.ManualComposite` exactly like any other object and add `@fb.asset(...)`; see `WeatherContextFiles` in `objects/weather.py`.
 
 ## Post-make checks
 
