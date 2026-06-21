@@ -6,8 +6,9 @@ Pipelines are built from ``DataObject`` subclasses: ``Table``,
 ``Document``, ``Figure``, ``Model``. Every object exposes the
 same three-method lifecycle (``make`` / ``convert`` / ``delete``) and
 ships a per-object log file at ``<local_dir>/<object_stem>.meta.log``.
-Dagster asset wrappers are first-class: ``fb.asset(MyTable, …)`` turns
-any ``DataObject`` subclass into a partitioned, dependency-aware asset.
+Dagster asset wrappers are first-class: the ``@fb.asset(...)`` class
+decorator turns any ``DataObject`` subclass into a partitioned,
+dependency-aware asset.
 
 Sample project
 --------------
@@ -17,10 +18,10 @@ A complete worked example lives at ``examples/p40_weather/`` in the
 that depends on this framework as its single dependency and builds the
 canonical pipeline against the free Open-Meteo API::
 
-    HTTPDB → Composite → Table → summary Table → Figure → Document
+    HTTPDB → Composite → Table → summary Table → AgentDB → narrative Table → Figure / Document
 
-Read it as the reference layout for ``pyproject.toml``, the
-``objects/`` / ``helpers/`` / ``resources/templates/{tables,documents}/``
+Read it as the reference layout for ``pyproject.toml``, the ``objects/``
+/ ``helpers/`` / ``resources/templates/{tables,documents,prompts}/``
 folder layout, and a full Dagster ``Definitions`` graph.
 
 Lifecycle
@@ -28,13 +29,12 @@ Lifecycle
 
 Every data object exposes the same three methods::
 
-    from p40_weather.objects import WeatherSummaryTable
-    from p40_weather.versions import V
+    from p40_weather.objects import WeatherSummaryTable, WeatherVersions
     from p40_flowbase import TableFormat
 
     DataObject.set_local_data("/tmp/p40_weather_data")
 
-    t = WeatherSummaryTable(V.V1)
+    t = WeatherSummaryTable(WeatherVersions.MAIN)
     t.make()                        # build the parquet master file
     t.convert(TableFormat.CSV)      # add a CSV side-format
     t.delete()                      # remove all on-disk artifacts
@@ -59,7 +59,7 @@ like any other object; in the Dagster UI the asset is tagged
     class RawDataRoom(fb.ManualComposite):
         id = "raw_dataroom_260616"
         description = "Hand-uploaded data-room files."
-        supported_versions = (V.MAIN,)
+        supported_versions = (WeatherVersions.MAIN,)
 
 Run as a Dagster pipeline
 -------------------------
@@ -70,11 +70,11 @@ Run as a Dagster pipeline
     pip install -e .
     dg dev -m p40_weather.definitions          # web UI; materialize all assets
     # …or one-shot:
-    dg launch -m p40_weather.definitions --select '*'
+    dg launch -m p40_weather.definitions --assets '*'
 
 Force re-creation of selected assets via the ``replace`` resource::
 
-    dg launch -m p40_weather.definitions --select 'weather_summary_table+' \\
+    dg launch -m p40_weather.definitions --assets 'weather_summary_table+' \\
         --config-json '{"resources":{"replace":{"config":{"replace":true}}}}'
 
 Plug in additional LLM models (advanced)

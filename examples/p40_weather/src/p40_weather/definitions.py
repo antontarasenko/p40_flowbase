@@ -1,11 +1,11 @@
 """Dagster ``Definitions`` for the p40_weather pipeline.
 
 DAG topology (deps, group, convert formats, retries) is declared on each
-``DataObject`` subclass via ``asset_*`` ``ClassVar``s in
-``objects/weather.py``. ``fb.assets_from_module`` discovers every
-concrete subclass in the ``p40_weather.objects`` package via the
-``DagsterAssetWiring._registry`` populated at class-body evaluation,
-so this file owns only: settings application and resources.
+``DataObject`` subclass with the ``@fb.asset(...)`` decorator in
+``objects/weather.py``. ``fb.assets_from_module`` discovers every class
+the decorator registered in the ``p40_weather.objects`` package via the
+``DagsterAssetWiring._registry``, so this file owns only: settings
+application and resources.
 """
 
 import dagster as dg

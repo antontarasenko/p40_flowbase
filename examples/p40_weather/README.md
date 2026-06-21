@@ -54,10 +54,10 @@ examples/p40_weather/
 
 ```sh
 cd examples/p40_weather
-pip install -e .
+pip install -e ".[dagster_ui]"
 ```
 
-This pulls `p40_flowbase`, `claude-agent-sdk` (the only agent SDK this example uses), `dagster-dg-cli`, and `dagster-webserver`. The framework leaves agent SDKs and the Dagster CLI as optional/dev-only, so each downstream project pins its own versions in `dependencies`.
+Core dependencies are `p40_flowbase` and `claude-agent-sdk` (the only agent SDK this example uses). The `dagster_ui` extra adds `dagster-dg-cli` and `dagster-webserver`, needed to drive the pipeline via `dg dev` / `dg launch` (the [Run the pipeline](#run-the-pipeline) section). Drop the `[dagster_ui]` extra if you only call the objects directly (see [Materialize an object-version without Dagster](#materialize-an-object-version-without-dagster)). The framework leaves agent SDKs and the Dagster CLI unpinned, so each downstream project pins its own versions.
 
 ## Run the pipeline
 
@@ -221,7 +221,7 @@ Two versions are wired into `WeatherVersions`:
 
 Both share the same city catalog today; the cities live in TSVs at `resources/versions/weather_versions/cities-<id>.tsv`. To diverge them, edit one TSV; no Python code changes.
 
-To add a new version: append a `WeatherVersions.<NEW>` enum member with the version's `WeatherVersion(id="<x>", cities=_load_cities("<x>"), ...)`, drop a `cities-<x>.tsv` next to the others, and Dagster picks up the new partition on next reload.
+To add a new version: append a `WeatherVersions.<NEW>` enum member with `WeatherVersion(id="<x>", name="<x>", description="...", forecast_days=<n>)`, drop a `cities-<x>.tsv` next to the others (the per-version catalog `WeatherInputCities` reads), and Dagster picks up the new partition on next reload.
 
 ## Schema metadata
 
@@ -237,7 +237,7 @@ Every Pydantic field on `HourlyRow`, `SummaryRow`, `NarrativeRow` carries `title
 }
 ```
 
-The framework uses the schema *types* for the strict Arrow-vs-Pydantic schema check that runs before every parquet write (`fb.validate_arrow_against_pydantic`). The extra metadata is for downstream tooling (doc generators, column dictionaries, unit checkers).
+The framework uses the schema *types* for the strict Arrow-vs-Pydantic schema check that runs before every parquet write (`fb.helpers.validate_arrow_against_pydantic`). The extra metadata is for downstream tooling (doc generators, column dictionaries, unit checkers).
 
 ## Tests
 

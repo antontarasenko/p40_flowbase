@@ -1,6 +1,6 @@
 """DataObject subclasses for the p40_weather pipeline.
 
-All six pipeline stages — plus their version metadata — live in
+All pipeline stages — plus their version metadata — live in
 :mod:`p40_weather.objects.weather`. This module re-exports them for
 the Dagster ``definitions``.
 """

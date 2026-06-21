@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68", "setuptools-scm"]
+requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "p40_weather"
-version = "0.1.0"
-description = "Worked example: weather pipeline on top of p40_flowbase."
+dynamic = ["version"]
+description = "Weather pipeline example on top of p40_flowbase"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
@@ -20,10 +20,16 @@ dependencies = [
     # version. p40_weather uses Models.CLAUDE_SONNET_4_6, so we need
     # claude-agent-sdk. You can pin with `==` for reproducibility.
     "claude-agent-sdk==0.1.80",
-    # Dagster runtime tooling (for convenience)
+]
+
+[project.optional-dependencies]
+dagster_ui = [
     "dagster-dg-cli~=1.13.1",
     "dagster-webserver~=1.13.1",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "p40_weather._version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -43,8 +49,6 @@ target-version = "py313"
 fix = true
 
 [tool.ruff.lint]
-# Tight on real defects, lax on the noise families that are
-# load-bearing for a library but distracting in a worked example.
 select = [
     "E",   # pycodestyle (errors)
     "F",   # pyflakes
