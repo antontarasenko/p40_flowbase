@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.6.1 (2026-06-21)
+
 - Add `ManualComposite`: a `Composite` for hand-uploaded files
 
 ## 0.6.0 (2026-05-10)
