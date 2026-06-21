@@ -45,6 +45,12 @@ openai-agents = ["openai-agents>=0.17.0"]
 langgraph = ["langgraph>=1.1.10"]
 all = ["p40_flowbase[claude-agent-sdk,langgraph,openai-agents]"]
 
+[project.urls]
+Homepage = "https://github.com/antontarasenko/p40_flowbase"
+Repository = "https://github.com/antontarasenko/p40_flowbase"
+Example = "https://github.com/antontarasenko/p40_flowbase/tree/main/examples/p40_weather"
+Changelog = "https://github.com/antontarasenko/p40_flowbase/blob/main/CHANGELOG.md"
+
 [dependency-groups]
 dev = [
     "basedpyright~=1.39.3",
