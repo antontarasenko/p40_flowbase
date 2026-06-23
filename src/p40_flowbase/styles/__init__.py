@@ -58,7 +58,6 @@ def apply_style(style_name: str = "style_1") -> None:
 
     :param style_name: Name of the style to apply from the ``STYLES``
         dict.
-    :type style_name: str
     :raises KeyError: If ``style_name`` is not found in ``STYLES``.
 
     Example::

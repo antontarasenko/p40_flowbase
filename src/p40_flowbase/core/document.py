@@ -96,7 +96,6 @@ class Document(DataObject, DagsterAssetWiring):
         """Render the Jinja template with ``self.data``.
 
         :returns: Path to the rendered ``.md`` inside a temporary directory.
-        :rtype: pathlib.Path
         """
         temp_dir = pathlib.Path(tempfile.mkdtemp(prefix="jinja_template_"))
         template_filename = self._resolve_template_name()

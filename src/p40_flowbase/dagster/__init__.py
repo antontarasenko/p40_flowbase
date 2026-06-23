@@ -47,10 +47,9 @@ import dagster as dg
 if TYPE_CHECKING:
     from p40_flowbase.core.base import DataObject
 
-#: Override keys accepted by ``assets_from_classes(overrides=...)`` and
-#: ``print_dag(overrides=...)``. These are the user-facing names that match
-#: the ``@fb.asset(...)`` decorator parameters; ``_wiring_for`` translates
-#: them to the underlying ``asset_*`` ``ClassVar`` storage names.
+#: Override keys for ``assets_from_classes(overrides=...)`` / ``print_dag(...)``:
+#: user-facing ``@fb.asset(...)`` parameter names that ``_wiring_for`` maps
+#: to the underlying ``asset_*`` ``ClassVar`` storage names.
 _OVERRIDE_KEYS: frozenset[str] = frozenset({
     "deps",
     "group",
@@ -71,10 +70,9 @@ _RESERVED_DG_ASSET_KWARGS: frozenset[str] = frozenset({
     "required_resource_keys",
 })
 
-#: Definition-time Dagster tag + metadata stamped onto any asset whose
-#: class sets ``asset_rebuildable = False`` (e.g. ``ManualComposite``).
-#: They flag in the UI that the asset's data is managed out-of-band and
-#: the rebuild paths (replace / convert / delete) are disabled.
+#: Definition-time tag + metadata stamped onto any asset whose class sets
+#: ``asset_rebuildable = False`` (e.g. ``ManualComposite``): flags in the UI
+#: that data is managed out-of-band and rebuild paths are disabled.
 _NOT_REBUILDABLE_TAGS: Mapping[str, str] = {"rebuildable": "false"}
 _NOT_REBUILDABLE_METADATA: Mapping[str, Any] = {
     "rebuildable": False,
@@ -92,10 +90,8 @@ def partitions_from_versions(
 
     :param versions: Tuple of version enum members with
         ``DataObjectVersion`` values.
-    :type versions: tuple[Enum, ...]
     :returns: ``StaticPartitionsDefinition`` with partition keys
         derived from version IDs.
-    :rtype: dg.StaticPartitionsDefinition
     """
     return dg.StaticPartitionsDefinition([
         v.value.id for v in versions
@@ -110,11 +106,8 @@ def get_version_from_partition(
 
     :param partition_key: The partition key string (matches
         ``DataObjectVersion.id``).
-    :type partition_key: str
     :param version_enum_class: The Enum class containing version members.
-    :type version_enum_class: type[Enum]
     :returns: The matching enum member.
-    :rtype: Enum
     :raises ValueError: If no version with the given ID exists.
     """
     for member in version_enum_class:
@@ -211,43 +204,16 @@ def _build_asset(
     feed the classes (or a module) to ``assets_from_classes`` /
     ``assets_from_module``.
 
-    :param obj_class: DataObject subclass to wrap.
-    :type obj_class: type
-    :param partitions_def: Partition definition for the asset.
-    :type partitions_def: dg.StaticPartitionsDefinition
-    :param version_enum_class: Enum class for resolving partition keys
-        to versions.
-    :type version_enum_class: type[Enum]
-    :param deps: Upstream asset dependencies.
-    :type deps: list[Any] | None
-    :param retries: Number of retry passes for failed requests
-        (DB mixin only).
-    :type retries: int
-    :param convert: Whether to materialize **every** supported side
-        format after ``make``. Mutually exclusive with
-        ``convert_formats``; the latter wins if both are set. The
-        run-scoped ``ConvertFormatsResource`` (when its ``formats`` is
-        non-empty) overrides both.
-    :type convert: bool
-    :param convert_formats: Static per-asset list of format values to
-        materialize after ``make``. Accepts plain strings
-        (``["csv", "json"]``) and/or ``StrEnum`` members
-        (``[fb.TableFormat.CSV, fb.FigureFormat.SVG]``); members are
-        normalized to their string values at registration time.
-        Formats not supported by this asset's format enum are silently
-        skipped. Overridden by ``ConvertFormatsResource.formats`` at
-        run time when non-empty.
-    :type convert_formats: Iterable[StrEnum | str] | None
-    :param group_name: Dagster asset group name.
-    :type group_name: str | None
-    :param dagster_kwargs: Extra keyword arguments forwarded to
-        ``@dg.asset(...)`` (e.g. ``tags``, ``owners``, ``metadata``,
-        ``code_version``, ``automation_condition``). The factory's
-        explicit kwargs (``name``, ``partitions_def``, ``deps``,
-        ``group_name``, ``required_resource_keys``) take precedence on
-        any key collision.
-    :returns: Dagster ``AssetsDefinition``.
-    :rtype: dg.AssetsDefinition
+    ``convert`` materializes **every** supported side format after
+    ``make``; ``convert_formats`` is a static per-asset allowlist of
+    plain strings and/or ``StrEnum`` members (normalized at
+    registration; unsupported formats silently skipped). The two are
+    mutually exclusive (``convert_formats`` wins), and the run-scoped
+    ``ConvertFormatsResource.formats`` overrides both when non-empty.
+
+    ``dagster_kwargs`` forwards extra ``@dg.asset(...)`` arguments (e.g.
+    ``tags``, ``metadata``, ``code_version``); the factory's explicit
+    kwargs win on key collisions.
     """
     conflicts = _RESERVED_DG_ASSET_KWARGS & dagster_kwargs.keys()
     if conflicts:
@@ -317,20 +283,18 @@ def _build_asset(
         elif is_db:
             await obj.create_tables(replace=replace)
         else:
-            # `obj.make()` is sync and would call `asyncio.run(_amake())`
-            # internally for ``TableFromDB``-style objects, which crashes
-            # inside Dagster's running loop. ``amake()`` is the async
-            # lifecycle entry that opens the per-object log context and
-            # emits ``make_summary`` exactly like ``make()`` does.
+            # Use the async entry: sync `make()` calls `asyncio.run()`
+            # internally for TableFromDB-style objects, which crashes inside
+            # Dagster's running loop. `amake()` opens the per-object log
+            # context and emits make_summary just like `make()`.
             await obj.amake(replace=replace)
 
-        # Resolution order for which side formats to materialize:
+        # Side-format resolution order:
         #   1. ConvertFormatsResource.formats (run-time override) wins.
         #   2. Else the asset's static convert_formats=[...] list.
         #   3. Else convert=True (legacy "all formats").
-        # In the first two cases, format strings not supported by this
-        # asset's enum are silently skipped, so a single global list
-        # works across heterogeneous assets.
+        # Unsupported formats are skipped, so one global list works
+        # across heterogeneous assets.
         formats_to_run = runtime_formats or static_formats
         if formats_to_run:
             fmt_class = type(obj.make_format)
@@ -423,21 +387,16 @@ def assets_from_classes(
 
     :param classes: Subset of ``DataObject`` subclasses to register as
         Dagster assets.
-    :type classes: Sequence[type[DataObject]]
     :param partitions_def: Partition definition shared by every asset.
-    :type partitions_def: dg.StaticPartitionsDefinition
     :param version_enum_class: Enum class for partition <-> version
         resolution; forwarded to ``asset(...)``.
-    :type version_enum_class: type[Enum]
     :param overrides: Per-class wiring overrides keyed by class. Each
         override mapping may set any of ``asset_deps``, ``asset_group``,
         ``asset_convert_formats``, ``asset_retries``, ``asset_convert``,
         ``asset_kwargs`` to override the corresponding ``ClassVar`` for
         this build only. Useful for parallel prod/staging/backfill
         ``Definitions`` over the same classes. Unknown keys raise.
-    :type overrides: Mapping[type[DataObject], Mapping[str, Any]] | None
     :returns: Built ``AssetsDefinition``\\ s, in topological order.
-    :rtype: list[dg.AssetsDefinition]
     :raises ValueError: If ``classes`` contains duplicates, if an
         ``asset_deps`` entry is not in ``classes``, if the deps form a
         cycle, or if ``overrides`` contains unknown keys.

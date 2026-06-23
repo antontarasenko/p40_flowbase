@@ -42,19 +42,16 @@ class Figure(DataObject, DagsterAssetWiring):
         return self._mplf
 
     def _convert_to_pdf(self) -> None:
-        """Convert pkl to pdf."""
         fig = self.mplf
         pdf_path = self.path_to_format(FigureFormat.PDF)
         fig.savefig(pdf_path, format="pdf", bbox_inches="tight")
 
     def _convert_to_png(self) -> None:
-        """Convert pkl to png."""
         fig = self.mplf
         png_path = self.path_to_format(FigureFormat.PNG)
         fig.savefig(png_path, format="png", bbox_inches="tight", dpi=300)
 
     def _convert_to_svg(self) -> None:
-        """Convert pkl to svg."""
         fig = self.mplf
         svg_path = self.path_to_format(FigureFormat.SVG)
         fig.savefig(svg_path, format="svg", bbox_inches="tight")

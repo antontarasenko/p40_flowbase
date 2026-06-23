@@ -308,9 +308,7 @@ class Models:
         """Resolve a ``ModelVersion`` by its ``id`` field.
 
         :param id_: The ``ModelVersion.id`` to look up.
-        :type id_: str
         :returns: The matching ``ModelVersion``.
-        :rtype: ModelVersion
         :raises ValueError: If no entry has the given id.
         """
         for spec in cls.all():

@@ -69,13 +69,10 @@ def object_log_context(
 
     :param object_stem: Unique key identifying the data object
         (``f"{id}-{version.value.id}"``).
-    :type object_stem: str
     :param local_dir: Directory where the ``<object_stem>.meta.log`` file
         lives. Created if missing.
-    :type local_dir: pathlib.Path
     :param phase: One of ``"make"``, ``"convert"``, ``"delete"`` —
         used in the begin/end markers written to the log.
-    :type phase: str
     """
     token = _current_object_stem.set(object_stem)
     local_dir.mkdir(parents=True, exist_ok=True)

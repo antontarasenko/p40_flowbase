@@ -69,7 +69,6 @@ class BaseCheck(ABC):
     :ivar name: Stable, human-readable identifier (e.g.
         ``"min_rows(5)"``). Logged on every check invocation; future
         Dagster ``AssetCheckResult`` mapping uses this as the check id.
-    :vartype name: str
     """
 
     name: str
@@ -110,7 +109,7 @@ class BaseCheck(ABC):
         self.run(obj)
 
 
-# ---- Table checks ---------------------------------------------------------
+# Table checks
 
 
 class MinRows(BaseCheck):
@@ -196,7 +195,7 @@ class Unique(BaseCheck):
             )
 
 
-# ---- Composite checks ------------------------------------------------------
+# Composite checks
 
 
 def _composite_files(obj: "DataObject") -> list[Any]:
@@ -295,7 +294,7 @@ class SchemaMatches(BaseCheck):
                 ) from e
 
 
-# ---- Request-DB checks -----------------------------------------------------
+# Request-DB checks
 
 
 async def _count_request_rows(
@@ -361,7 +360,6 @@ class MaxFailureRate(BaseCheck):
 
     :param frac: Allowed failure fraction. Required (no default) so the
         policy is always explicit at the call site.
-    :type frac: float
     """
 
     def __init__(self, *, frac: float) -> None:

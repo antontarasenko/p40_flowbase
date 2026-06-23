@@ -57,7 +57,6 @@ class Model(DataObject):
         self._fit()
 
     def _convert_to_joblib(self) -> None:
-        """Convert pkl to joblib."""
         model = self.model
         joblib_path = self.path_to_format(ModelFormat.JOBLIB)
         joblib.dump(model, joblib_path)

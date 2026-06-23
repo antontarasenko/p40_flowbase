@@ -121,10 +121,8 @@ class AgentTask(SQLModel, table=True):
 
     expected_input_cost_usd: float | None = None
 
-    # Attachments
     attachments: str | None = None
 
-    # Custom tools
     enable_custom_tools: bool = False
     mcp_server_config: str | None = None
 

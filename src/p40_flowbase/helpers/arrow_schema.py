@@ -29,10 +29,9 @@ from typing import (
 import pyarrow as pa
 import pydantic as pyd
 
-# Runtime sentinel for the ``typing.Union`` origin; ``int | None``
-# resolves to ``types.UnionType`` while ``Optional[int]`` resolves to
-# this sentinel. ``getattr`` keeps pyright from flagging the deprecated
-# ``typing.Union`` alias; we only need the runtime value.
+# Runtime ``typing.Union`` origin: ``Optional[int]`` resolves to this,
+# ``int | None`` to ``types.UnionType``. ``getattr`` avoids pyright's
+# deprecated-alias warning; only the runtime value matters.
 _TYPING_UNION_ORIGIN: Any = getattr(_typing, "Union")  # noqa: B009
 
 

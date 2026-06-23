@@ -43,7 +43,6 @@ class Composite(DataObject, DagsterAssetWiring):
         }
 
     def _convert_to_zip(self) -> None:
-        """Convert files directory to zip."""
         import zipfile
 
         zip_path = self.path_to_format(CompositeFormat.ZIP)
@@ -54,7 +53,6 @@ class Composite(DataObject, DagsterAssetWiring):
                     zipf.write(file_path, file_path.relative_to(files_path))
 
     def _convert_to_tar_zst(self) -> None:
-        """Convert files directory to tar.zst."""
         tar_zst_path = self.path_to_format(CompositeFormat.TAR_ZST)
         tar_process = subprocess.Popen(
             ["tar", "-C", str(self.local_dir), "-cf", "-", f"{self.object_stem}.files"],
@@ -110,8 +108,8 @@ class ManualComposite(Composite):
     it and the UI flags that its data is managed out-of-band.
     """
 
-    #: Intrinsic: hand-uploaded, so a global run must not recreate it.
-    #: Read by ``assets_from_classes`` to stamp the not-rebuildable mark.
+    #: Hand-uploaded, so a global run must not recreate it; read by
+    #: ``assets_from_classes`` to stamp the not-rebuildable mark.
     asset_rebuildable: ClassVar[bool] = False
 
     @override
@@ -122,8 +120,7 @@ class ManualComposite(Composite):
 
     @override
     def _check_make_preconditions(self, replace: bool) -> None:
-        # Never wipe a hand-curated object: keep make() idempotent and
-        # neutralize replace so it cannot delete the uploaded files.
+        # Never wipe hand-curated files: neutralize replace, keep make() idempotent.
         if replace:
             logger.warning(
                 f"replace_ignored | object={self.object_stem} "
@@ -133,10 +130,9 @@ class ManualComposite(Composite):
 
     @override
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:
-        # Keep .files the only format: side formats are snapshots that
-        # would drift from the hand-edited originals we never rebuild.
-        # Neutralize (don't raise) so a global convert run skips this
-        # object instead of crashing on it.
+        # Keep .files the only format (side formats would drift from
+        # originals we never rebuild); neutralize, don't raise, so a
+        # global convert run skips this object.
         del fmt, replace
         logger.warning(
             f"convert_ignored | object={self.object_stem} "

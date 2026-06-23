@@ -135,12 +135,10 @@ class Table(DataObject, DagsterAssetWiring):
         schema check is never skipped by accident.
 
         :param arrow: PyArrow table to persist.
-        :type arrow: pa.Table
         :param validate: When ``True`` (default), raise ``ValueError``
             if the Arrow schema does not match ``row_schema``. Set to
             ``False`` only for performance-sensitive paths where you
             have already validated upstream.
-        :type validate: bool
         """
         if validate:
             validate_arrow_against_pydantic(
@@ -168,17 +166,12 @@ class Table(DataObject, DagsterAssetWiring):
           subclass (``type(self).__module__.split(".")[0]``).
 
         :param template_name: Override the convention-derived template name.
-        :type template_name: str | None
         :param package: Override the convention-derived anchor package.
-        :type package: str | None
         :param subpath: Override the convention-derived template subpath.
-        :type subpath: str
         :param template_vars: Variables passed into the Jinja render.
-        :type template_vars: dict[str, Any] | None
         :param duckdb_setup: Optional callback to register UDFs, attach
             databases, or configure the connection before the template
             SQL executes.
-        :type duckdb_setup: Callable[[duckdb.DuckDBPyConnection], None] | None
         """
         from p40_flowbase.core.base import resolve_anchor_package
 
@@ -217,13 +210,11 @@ class Table(DataObject, DagsterAssetWiring):
         return {"rows": df.num_rows, "cols": df.num_columns}
 
     def _convert_to_csv(self) -> None:
-        """Convert parquet to csv."""
         src = self.path_to_format(TableFormat.PARQUET)
         dst = self.path_to_format(TableFormat.CSV)
         duckdb.read_parquet(str(src)).write_csv(str(dst), header=True)
 
     def _convert_to_tsv(self) -> None:
-        """Convert parquet to tsv."""
         src = self.path_to_format(TableFormat.PARQUET)
         dst = self.path_to_format(TableFormat.TSV)
         duckdb.read_parquet(str(src)).write_csv(str(dst), header=True, sep="\t")

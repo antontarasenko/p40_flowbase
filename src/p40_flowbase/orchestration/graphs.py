@@ -50,18 +50,13 @@ class OverallState(TypedDict, total=False):
     """State for the main fan-out/collect graph.
 
     :ivar lanes: List of lane identifiers.
-    :vartype lanes: list[str]
     :ivar num_steps: Number of steps per lane.
-    :vartype num_steps: int
     :ivar max_retries: Maximum retry attempts per step.
-    :vartype max_retries: int
     :ivar lane_results: Flat list of per-lane result dicts, collected
         from all lanes. Uses ``operator.add`` reducer so concurrent
         ``Send`` outputs are concatenated.
-    :vartype lane_results: list[StepResult]
     :ivar organized_results: Final organized results (set by the
         ``collect_results`` node).
-    :vartype organized_results: dict[str, list[list[Any]]]
     """
 
     lanes: list[str]
@@ -90,23 +85,17 @@ def build_recursive_task_graph(
         ``(lane_id, step_index, prev_results) -> Optional[UUID]``.
         Creates tasks/requests for one lane-step. Returns group UUID
         or ``None`` to skip.
-    :type populate_step: PopulateStep
     :param execute_pending: Async callback ``(group_id_str) -> list``.
         Executes pending items in the given group.
-    :type execute_pending: ExecutePending
     :param retry_failed: Async callback ``(group_id_str) -> list``.
         Retries failed items in the given group.
-    :type retry_failed: RetryFailed
     :param get_wave_results: Async callback ``(group_id) -> list``.
         Returns the final (non-superseded) results for the given group.
-    :type get_wave_results: GetWaveResults
     :param checkpointer: Optional LangGraph checkpointer for resumability.
-    :type checkpointer: Any | None
     :returns: Compiled LangGraph graph ready to invoke.
-    :rtype: Any
     """
 
-    # --- Lane subgraph ---
+    # Lane subgraph
 
     async def process_step(state: dict[str, Any]) -> dict[str, Any]:
         """Execute populate + execute + retry for one lane-step.
@@ -184,7 +173,7 @@ def build_recursive_task_graph(
     lane_graph.add_conditional_edges("process_step", should_continue)
     compiled_lane = lane_graph.compile()
 
-    # --- Main graph ---
+    # Main graph
 
     def fan_out_lanes(state: dict[str, Any]) -> list[Send]:
         """Create a Send per lane for parallel execution."""
@@ -217,8 +206,6 @@ def build_recursive_task_graph(
             organized[lane_id][step_index] = results
         return {"organized_results": organized}
 
-    # Wrapper node that runs the lane subgraph and extracts results
-    # for the parent's lane_results reducer
     async def lane_processor(state: dict[str, Any]) -> dict[str, Any]:
         """Run lane subgraph and return results for aggregation."""
         result = await compiled_lane.ainvoke(state)

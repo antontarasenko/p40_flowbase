@@ -33,7 +33,6 @@ class DB(DataObject, DagsterAssetWiring):
         - SQLITE: SQLite database file (default)
 
     :cvar tables: List of SQLModel table classes to create.
-    :vartype tables: list[Any]
 
     Subclasses should define their tables and can use HTTPDB/LLMDB/AgentDB
     mixins for request management.
@@ -154,7 +153,6 @@ class DB(DataObject, DagsterAssetWiring):
 
         :param replace: If ``True``, delete existing master copy and
             all format copies, then create master copy anew.
-        :type replace: bool
         """
         if replace:
             self.delete()
@@ -167,10 +165,8 @@ class DB(DataObject, DagsterAssetWiring):
 
         :param fmt: Format to save. If ``None``, saves in all supported
             formats (excluding the default format).
-        :type fmt: StrEnum | None
         :param replace: If ``True``, delete existing copy and recreate.
             If ``False``, raise when copy already exists.
-        :type replace: bool
         :raises FileNotFoundError: If master copy doesn't exist.
         :raises FileExistsError: If a format copy exists and
             ``replace=False``.
