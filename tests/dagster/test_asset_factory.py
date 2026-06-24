@@ -39,6 +39,7 @@ class _AFRow(pyd.BaseModel):
     n: int
 
 
+@fb.asset()
 class _PlainTable(Table):
     id = "af_plain_table"
     description = "Plain sync Table"
@@ -65,6 +66,7 @@ class _AFDB(DB):
     tables = [_AFWidget]
 
 
+@fb.asset()
 class _AFTable(TableFromDB[_AFDB]):
     id = "af_widgets_table"
     description = "Asset factory widgets table"
@@ -80,6 +82,7 @@ class _AFTable(TableFromDB[_AFDB]):
         return pa.Table.from_pylist([{"n": r.n} for r in rows])
 
 
+@fb.asset()
 class _AFComposite(Composite):
     """Composite whose sync ``_make`` itself calls ``asyncio.run(...)``.
 
@@ -123,12 +126,18 @@ def _materialize(
     assert result.success
 
 
-def test_plain_table_asset_materializes(test_local_data):
-    asset_def = fb.asset(
-        _PlainTable,
+def _build_asset_def(cls: type) -> dg.AssetsDefinition:
+    """Build the single ``AssetsDefinition`` for a ``@fb.asset()`` class."""
+    [asset_def] = fb.assets_from_classes(
+        [cls],
         partitions_def=fb.partitions_from_versions((_V.V1,)),
         version_enum_class=_V,
     )
+    return asset_def
+
+
+def test_plain_table_asset_materializes(test_local_data):
+    asset_def = _build_asset_def(_PlainTable)
     _materialize(asset_def)
 
     table = _PlainTable(_V.V1)
@@ -151,11 +160,7 @@ def test_table_from_db_asset_materializes(test_local_data):
 
     asyncio.run(_seed())
 
-    asset_def = fb.asset(
-        _AFTable,
-        partitions_def=fb.partitions_from_versions((_V.V1,)),
-        version_enum_class=_V,
-    )
+    asset_def = _build_asset_def(_AFTable)
     _materialize(asset_def)
 
     table = _AFTable(_V.V1)
@@ -168,11 +173,7 @@ def test_composite_asset_materializes(test_local_data):
     """Regression: Composite has no `_amake` override — base default runs
     sync `_make` (with nested `asyncio.run`) in a thread.
     """
-    asset_def = fb.asset(
-        _AFComposite,
-        partitions_def=fb.partitions_from_versions((_V.V1,)),
-        version_enum_class=_V,
-    )
+    asset_def = _build_asset_def(_AFComposite)
     _materialize(asset_def)
 
     composite = _AFComposite(_V.V1)
