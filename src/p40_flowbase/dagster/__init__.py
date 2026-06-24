@@ -40,7 +40,7 @@ import graphlib
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum, StrEnum
 from types import ModuleType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import dagster as dg
 
@@ -129,9 +129,11 @@ class DataObjectIOManager(dg.IOManager):
     def __init__(self, local_data: str) -> None:
         self.local_data = local_data
 
+    @override
     def handle_output(self, context: dg.OutputContext, obj: object) -> None:
         pass
 
+    @override
     def load_input(self, context: dg.InputContext) -> object:
         return None
 
@@ -297,7 +299,7 @@ def _build_asset(
         # across heterogeneous assets.
         formats_to_run = runtime_formats or static_formats
         if formats_to_run:
-            fmt_class = type(obj.make_format)
+            fmt_class: type[StrEnum] = type(obj.make_format)
             for fmt in fmt_class:
                 if fmt == obj.make_format or fmt.value not in formats_to_run:
                     continue

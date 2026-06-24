@@ -167,7 +167,9 @@ def build_recursive_task_graph(
         result: str = END
         return result
 
-    lane_graph: Any = StateGraph(dict)
+    # Plain ``dict`` schema (not a TypedDict) is intentional: nodes replace
+    # the whole state instead of per-channel merging. See ``process_step``.
+    lane_graph: Any = StateGraph(dict)  # pyright: ignore[reportArgumentType]
     lane_graph.add_node("process_step", process_step)
     lane_graph.add_conditional_edges(START, should_continue)
     lane_graph.add_conditional_edges("process_step", should_continue)

@@ -180,11 +180,6 @@ class DB(DataObject, DagsterAssetWiring):
                 f"Call create_tables() first to create the master copy in {self.make_format.value} format."
             )
 
-        if not isinstance(self.make_format, StrEnum):
-            raise TypeError(
-                f"{self.__class__.__name__} does not define make_format as a StrEnum"
-            )
-
         format_class = type(self.make_format)
 
         if fmt is None:

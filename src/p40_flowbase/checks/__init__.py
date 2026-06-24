@@ -33,13 +33,16 @@ async check to a sync-only object raises ``NotImplementedError`` at
 first run.
 """
 
-from abc import ABC
 from typing import (
     TYPE_CHECKING,
     Any,
     override,
 )
 
+from p40_flowbase.core.base import (
+    BaseCheck,
+    CheckFailedError,
+)
 from p40_flowbase.core.composite import Composite
 from p40_flowbase.core.formats import CompositeFormat
 from p40_flowbase.core.requests_mixin import RequestsDBMixin
@@ -49,64 +52,6 @@ if TYPE_CHECKING:
     import pydantic as pyd
 
     from p40_flowbase.core.base import DataObject
-
-
-class CheckFailedError(Exception):
-    """Raised by a :class:`BaseCheck` when its assertion does not hold.
-
-    Propagates out of ``make()`` / ``amake()`` so a Dagster asset goes
-    red and a manual script crashes loudly.
-    """
-
-
-class BaseCheck(ABC):
-    """Base class for declarative post-make checks.
-
-    Subclasses set ``self.name`` (used in log lines) in ``__init__`` and
-    override either :meth:`run` (sync) or :meth:`arun` (async). The
-    framework dispatches to whichever one matches the lifecycle entry.
-
-    :ivar name: Stable, human-readable identifier (e.g.
-        ``"min_rows(5)"``). Logged on every check invocation; future
-        Dagster ``AssetCheckResult`` mapping uses this as the check id.
-    """
-
-    name: str
-
-    def _require(self, obj: "DataObject", *types: type) -> None:
-        """Raise ``TypeError`` if ``obj`` isn't an instance of any of ``types``.
-
-        Loud type-check at the top of every concrete ``run``/``arun`` body
-        so misuse (``MinRows`` on a ``Composite``) surfaces at the first
-        ``make()`` instead of producing a confusing ``AttributeError``.
-        """
-        if not isinstance(obj, types):
-            allowed = " or ".join(t.__name__ for t in types)
-            raise TypeError(
-                f"{type(self).__name__} requires {allowed}, "
-                f"got {type(obj).__name__}"
-            )
-
-    def run(self, obj: "DataObject") -> None:
-        """Synchronous check body. Override in sync checks.
-
-        Default raises ``NotImplementedError`` so async-only checks
-        (``MinRequests``, ``MaxFailureRate``) attached to a sync-only
-        object surface a clear error: "use amake()".
-        """
-        del obj
-        raise NotImplementedError(
-            f"{type(self).__name__} requires an async context; "
-            f"use amake() (or attach this check to a request DB)."
-        )
-
-    async def arun(self, obj: "DataObject") -> None:
-        """Async check body. Default delegates to :meth:`run`.
-
-        Override only when you need an ``async`` resource (e.g. a DB
-        session). Sync checks need not override this.
-        """
-        self.run(obj)
 
 
 # Table checks
