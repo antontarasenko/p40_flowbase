@@ -113,6 +113,7 @@ class Table(DataObject, DagsterAssetWiring):
     make_format: ClassVar[TableFormat] = TableFormat.PARQUET  # pyright: ignore[reportIncompatibleVariableOverride]
     row_schema: ClassVar[type[pyd.BaseModel]]
     template_package: ClassVar[str | None] = None
+    readme_kind: ClassVar[str] = "table"
 
     def __init__(self, version: Enum) -> None:
         super().__init__(version)
@@ -208,6 +209,26 @@ class Table(DataObject, DagsterAssetWiring):
     def _make_summary(self) -> dict[str, Any]:
         df = self.df
         return {"rows": df.num_rows, "cols": df.num_columns}
+
+    @override
+    def _readme_context(self) -> dict[str, Any]:
+        """Add the data dictionary, one entry per ``row_schema`` field."""
+        ctx = super()._readme_context()
+        fields: list[dict[str, str]] = []
+        for name, info in self.row_schema.model_fields.items():
+            extra = info.json_schema_extra
+            units = extra.get("units") if isinstance(extra, dict) else None
+            fields.append(
+                {
+                    "id": name,
+                    "name": info.title or "",
+                    "description": info.description or "",
+                    "units": str(units) if units is not None else "",
+                }
+            )
+        ctx["fields"] = fields
+        ctx["has_units"] = any(f["units"] for f in fields)
+        return ctx
 
     def _convert_to_csv(self) -> None:
         src = self.path_to_format(TableFormat.PARQUET)

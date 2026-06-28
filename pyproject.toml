@@ -73,7 +73,10 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-p40_flowbase = ["py.typed"]
+p40_flowbase = [
+    "py.typed",
+    "resources/templates/readme/*.html.jinja",
+]
 
 [tool.setuptools_scm]
 version_scheme = "no-guess-dev"

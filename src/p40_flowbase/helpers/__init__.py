@@ -12,6 +12,7 @@ from p40_flowbase.helpers.file_stats import (
 from p40_flowbase.helpers.jinja_templates import render_jinja_template
 from p40_flowbase.helpers.json_extract import extract_json_from_response
 from p40_flowbase.helpers.paths import safe_path_component
+from p40_flowbase.helpers.readme_html import render_readme_html
 
 __all__ = [
     "arrow_schema_from_pydantic",
@@ -20,6 +21,7 @@ __all__ = [
     "extract_json_from_response",
     "file_or_dir_size_bytes",
     "render_jinja_template",
+    "render_readme_html",
     "safe_path_component",
     "validate_arrow_against_pydantic",
 ]

@@ -1,0 +1,32 @@
+{% extends "base.readme.html.jinja" %}
+{% block sections %}
+<h2>Data dictionary</h2>
+{% if fields %}
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>Description</th>
+      {% if has_units %}
+      <th>Units</th>
+      {% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in fields %}
+    <tr>
+      <td><code>{{ f.id }}</code></td>
+      <td>{{ f.name }}</td>
+      <td>{{ f.description }}</td>
+      {% if has_units %}
+      <td class="units">{{ f.units }}</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No fields defined.</p>
+{% endif %}
+{% endblock %}

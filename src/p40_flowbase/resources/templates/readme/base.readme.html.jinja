@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ object_id }} — README</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 0.2rem; }
+  h2 { font-size: 1.2rem; margin: 2rem 0 0.5rem; border-bottom: 1px solid #8884; padding-bottom: 0.2rem; }
+  p.subtitle { color: #8a8a8a; margin: 0 0 1rem; }
+  dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 1rem 0; }
+  dl.meta dt { font-weight: 600; }
+  dl.meta dd { margin: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #8884; vertical-align: top; }
+  th { background: #8881; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  td.units { white-space: nowrap; }
+</style>
+</head>
+<body>
+<h1>{{ object_id }}</h1>
+<p class="subtitle">{{ description }}</p>
+<dl class="meta">
+  <dt>Version</dt><dd>{{ version.id }} — {{ version.name }}</dd>
+  <dt>Version notes</dt><dd>{{ version.description }}</dd>
+</dl>
+{% block sections %}{% endblock %}
+</body>
+</html>

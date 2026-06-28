@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Add `<object_id>.readme.html` to data object assets
+
 ## 0.7.0 (2026-06-21)
 
 - Prepare package for publication on GitHub

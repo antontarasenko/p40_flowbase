@@ -45,6 +45,7 @@ from p40_flowbase.helpers.file_stats import (
     count_files,
     file_or_dir_size_bytes,
 )
+from p40_flowbase.helpers.readme_html import render_readme_html
 from p40_flowbase.logging import (
     logger,
     object_log_context,
@@ -185,6 +186,8 @@ class DataObject(ABC):
     #: Post-make checks; iterated by ``make`` / ``amake`` after the
     #: ``make_summary`` log line. See ``p40_flowbase.checks`` for built-ins.
     checks: ClassVar[tuple[BaseCheck, ...]] = ()
+    #: Selects the ``<readme_kind>.readme.html.jinja`` template.
+    readme_kind: ClassVar[str] = "base"
     version: Enum
 
     # Must be set by project config
@@ -244,12 +247,35 @@ class DataObject(ABC):
         """
         return self.local_dir / f"{self.object_stem}.{fmt.value}"
 
+    @property
+    def path_to_readme(self) -> pathlib.Path:
+        return self.local_dir / f"{self.object_stem}.readme.html"
+
     def exists(self) -> bool:
         """Check whether the master copy of this data object exists.
 
         :returns: ``True`` if the master copy file or directory exists.
         """
         return self.path_to_format(self.make_format).exists()
+
+    def _readme_context(self) -> dict[str, Any]:
+        """README template context; subclasses extend via ``super()``."""
+        v = self.version.value
+        return {
+            "object_id": self.id,
+            "description": self.description,
+            "version": {"id": v.id, "name": v.name, "description": v.description},
+        }
+
+    def readme_html(self) -> str:
+        """Render the README; deterministic, a pure function of the definition."""
+        return render_readme_html(
+            kind=self.readme_kind,
+            context=self._readme_context(),
+        )
+
+    def _write_readme(self) -> None:
+        self.path_to_readme.write_text(self.readme_html())
 
     def _delete_format(self, fmt: StrEnum) -> None:
         """Delete a specific format of the object."""
@@ -407,6 +433,7 @@ class DataObject(ABC):
                 logger.exception(f"make_failed | object={self.object_stem}")
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
+            self._write_readme()
             self._run_checks()
 
     async def amake(self, replace: bool = False) -> None:
@@ -437,6 +464,7 @@ class DataObject(ABC):
                 logger.exception(f"make_failed | object={self.object_stem}")
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
+            self._write_readme()
             await self._arun_checks()
 
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:
