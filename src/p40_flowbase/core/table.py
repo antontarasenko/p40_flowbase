@@ -5,6 +5,7 @@ Copyright (c) 2025 Anton Tarasenko
 """
 
 import json
+import pathlib
 from abc import abstractmethod
 from collections.abc import Callable
 from enum import Enum
@@ -125,6 +126,31 @@ class Table(DataObject, DagsterAssetWiring):
         if self._table is None:
             self._table = pq.read_table(self.path_to_format(TableFormat.PARQUET))
         return self._table
+
+    @property
+    def path_to_schema(self) -> pathlib.Path:
+        return self.local_dir / f"{self.object_stem}.schema.json"
+
+    def row_schema_json(self) -> str:
+        """Render ``row_schema`` as a standalone JSON Schema document.
+
+        Deterministic, a pure function of the definition: pydantic's
+        ``model_json_schema()`` (draft 2020-12) with the dialect ``$schema``
+        key prepended. Keys are not sorted so field order is preserved.
+        """
+        schema = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            **self.row_schema.model_json_schema(),
+        }
+        return json.dumps(schema, indent=2, ensure_ascii=False) + "\n"
+
+    def _write_schema(self) -> None:
+        self.path_to_schema.write_text(self.row_schema_json())
+
+    @override
+    def _write_assets(self) -> None:
+        super()._write_assets()
+        self._write_schema()
 
     def save_arrow(self, arrow: pa.Table, *, validate: bool = True) -> None:
         """Validate ``arrow`` against ``row_schema`` then write parquet.

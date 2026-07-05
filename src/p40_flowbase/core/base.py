@@ -277,6 +277,15 @@ class DataObject(ABC):
     def _write_readme(self) -> None:
         self.path_to_readme.write_text(self.readme_html())
 
+    def _write_assets(self) -> None:
+        """Write deterministic sidecar assets after a successful make.
+
+        Grouped seam so subclasses add machine/human-facing sidecars
+        (``.readme.html``, ``.schema.json``) without base knowing about
+        subclass-only attributes. Overrides should call ``super()``.
+        """
+        self._write_readme()
+
     def _delete_format(self, fmt: StrEnum) -> None:
         """Delete a specific format of the object."""
         format_path = self.path_to_format(fmt)
@@ -433,7 +442,7 @@ class DataObject(ABC):
                 logger.exception(f"make_failed | object={self.object_stem}")
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
-            self._write_readme()
+            self._write_assets()
             self._run_checks()
 
     async def amake(self, replace: bool = False) -> None:
@@ -464,7 +473,7 @@ class DataObject(ABC):
                 logger.exception(f"make_failed | object={self.object_stem}")
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
-            self._write_readme()
+            self._write_assets()
             await self._arun_checks()
 
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:

@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- Add `<object_id>.schema.json` to `Table` object assets
+
 ## 0.7.1 (2026-06-28)
 
 - Add `<object_id>.readme.html` to data object assets
