@@ -1,0 +1,24 @@
+{% extends "base.readme.html.jinja" %}
+{% block sections %}
+<h2>Contents</h2>
+{% if expected_files %}
+<table>
+  <thead>
+    <tr>
+      <th>Name / pattern</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in expected_files %}
+    <tr>
+      <td><code>{{ f.name }}</code>{% if f.is_glob %} <span class="tag">pattern</span>{% endif %}</td>
+      <td>{{ f.description }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No file index defined.</p>
+{% endif %}
+{% endblock %}

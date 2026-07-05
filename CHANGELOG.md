@@ -2,6 +2,7 @@
 
 ## Branch `main`
 
+- Add `expected_files` to `Composite` and `ManualComposite`
 - Add `<object_id>.meta.json` to data object assets
 - Add `<object_id>.schema.json` to `Table` object assets
 

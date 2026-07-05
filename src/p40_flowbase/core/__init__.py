@@ -6,6 +6,7 @@ from p40_flowbase.core.base import (
 )
 from p40_flowbase.core.composite import (
     Composite,
+    FileSpec,
     ManualComposite,
 )
 from p40_flowbase.core.database import DB
@@ -37,6 +38,7 @@ __all__ = [
     "DB",
     "Composite",
     "CompositeFormat",
+    "FileSpec",
     "DBFormat",
     "DataObject",
     "DataObjectVersion",

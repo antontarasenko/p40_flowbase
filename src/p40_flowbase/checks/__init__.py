@@ -43,7 +43,10 @@ from p40_flowbase.core.base import (
     BaseCheck,
     CheckFailedError,
 )
-from p40_flowbase.core.composite import Composite
+from p40_flowbase.core.composite import (
+    Composite,
+    ManualComposite,
+)
 from p40_flowbase.core.formats import CompositeFormat
 from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.core.table import Table
@@ -213,6 +216,68 @@ class MinFileSize(BaseCheck):
             )
 
 
+def _reject_manual_composite(check_name: str, obj: "DataObject") -> None:
+    """Reject a ``ManualComposite`` for coverage checks.
+
+    Coverage runs after ``_make``, when a ``Composite`` has produced its
+    files. A ``ManualComposite`` is empty at make time (populated
+    out-of-band), so coverage cannot be evaluated — attaching a coverage
+    check to one is a definition-time mistake, raised loudly.
+    """
+    if isinstance(obj, ManualComposite):
+        raise TypeError(
+            f"{check_name} does not apply to ManualComposite "
+            f"({type(obj).__name__}): its .files is empty at make time and "
+            f"populated out-of-band, so coverage cannot be checked."
+        )
+
+
+class AllExpectedFilesPresent(BaseCheck):
+    """Fail if any ``expected_files`` spec matched no file under ``.files``.
+
+    Coverage gate for auto-built ``Composite`` outputs: every documented
+    entry (a concrete path or a glob) must match at least one produced
+    file, catching a promised output that silently went missing. Passes
+    trivially when ``expected_files`` is empty. Not for
+    ``ManualComposite`` (empty at make time).
+    """
+
+    name = "all_expected_files_present"
+
+    @override
+    def run(self, obj: "DataObject") -> None:
+        self._require(obj, Composite)
+        _reject_manual_composite(self.name, obj)
+        missing = obj.index_coverage().missing_specs  # type: ignore[attr-defined]
+        if missing:
+            names = ", ".join(s.name for s in missing)
+            raise CheckFailedError(
+                f"{self.name}: {len(missing)} spec(s) matched no file: {names}"
+            )
+
+
+class NoUnindexedFiles(BaseCheck):
+    """Fail if any file under ``.files`` matches no ``expected_files`` spec.
+
+    Enforces an *exhaustive* index: every produced file must be documented
+    by some entry (concrete path or glob). Opt-in — omit it when the index
+    is deliberately partial. Not for ``ManualComposite``.
+    """
+
+    name = "no_unindexed_files"
+
+    @override
+    def run(self, obj: "DataObject") -> None:
+        self._require(obj, Composite)
+        _reject_manual_composite(self.name, obj)
+        unindexed = obj.index_coverage().unindexed  # type: ignore[attr-defined]
+        if unindexed:
+            raise CheckFailedError(
+                f"{self.name}: {len(unindexed)} undocumented file(s); "
+                f"first={unindexed[0]}"
+            )
+
+
 class SchemaMatches(BaseCheck):
     """Fail if any ``*.json`` file fails ``model.model_validate_json(...)``.
 
@@ -338,6 +403,7 @@ Check = BaseCheck
 
 
 __all__ = [
+    "AllExpectedFilesPresent",
     "BaseCheck",
     "Check",
     "CheckFailedError",
@@ -348,6 +414,7 @@ __all__ = [
     "MinRows",
     "NoEmptyFiles",
     "NoNulls",
+    "NoUnindexedFiles",
     "SchemaMatches",
     "Unique",
 ]

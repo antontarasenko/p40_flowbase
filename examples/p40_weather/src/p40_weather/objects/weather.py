@@ -25,12 +25,12 @@ import matplotlib
 matplotlib.use("Agg")  # headless: Dagster runs each asset in a non-GUI subprocess
 
 import matplotlib.pyplot as plt  # must follow matplotlib.use(...)
+import p40_flowbase as fb
 import pyarrow as pa
 import pydantic as pyd
 import sqlmodel as sm
-
-import p40_flowbase as fb
 from p40_flowbase import checks as ck
+
 from p40_weather.helpers import build_forecast_url
 
 ################################################################################
@@ -125,8 +125,27 @@ class WeatherContextFiles(fb.ManualComposite):
         "Hand-uploaded project description/context for the module."
     )
     supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
+    # Documents the dated-entry convention for a human reader (rendered in
+    # readme.html). Globs are illustrative, not exhaustive: the index just
+    # explains what belongs in each <YYMMDD>_<title>/ folder.
+    expected_files: ClassVar[tuple[fb.FileSpec, ...]] = (
+        fb.FileSpec(
+            "*/project_description.md",
+            "Per dated entry: the main context note for that update.",
+        ),
+        fb.FileSpec(
+            "**/*.md",
+            "Any Markdown notes within a dated entry.",
+        ),
+        fb.FileSpec(
+            "**/*.png",
+            "Screenshots or diagrams referenced by the notes.",
+        ),
+    )
     # Populated out-of-band, so make() must succeed on an empty directory;
-    # only guard against truncated / 0-byte uploads.
+    # only guard against truncated / 0-byte uploads. No coverage checks:
+    # .files is empty at make time, so AllExpectedFilesPresent /
+    # NoUnindexedFiles cannot be evaluated (and would be rejected here).
     checks: ClassVar[tuple[fb.Check, ...]] = (ck.NoEmptyFiles(),)
 
 
@@ -376,10 +395,22 @@ class WeatherResponseFiles(fb.Composite):
     id: ClassVar[str] = "weather_response_files"
     description: ClassVar[str] = "Per-city Open-Meteo JSON responses."
     supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
-    # Each successful HTTP response writes one file; truncated downloads
-    # surface as 0-byte files.
+    # Documents the whole output in one glob: the bundle is nothing but
+    # <city>.json files. Rendered verbatim in readme.html; expanded to the
+    # actual filenames in meta.json.
+    expected_files: ClassVar[tuple[fb.FileSpec, ...]] = (
+        fb.FileSpec(
+            "*.json",
+            "One Open-Meteo JSON response per city, named <city>.json.",
+        ),
+    )
+    # Coverage on an auto-built Composite: AllExpectedFilesPresent makes the
+    # *.json spec match at least one file (so it subsumes MinFiles(1) here),
+    # and NoUnindexedFiles forbids any stray file that is not a documented
+    # city JSON. NoEmptyFiles still catches truncated 0-byte downloads.
     checks: ClassVar[tuple[fb.Check, ...]] = (
-        ck.MinFiles(1),
+        ck.AllExpectedFilesPresent(),
+        ck.NoUnindexedFiles(),
         ck.NoEmptyFiles(),
     )
 
