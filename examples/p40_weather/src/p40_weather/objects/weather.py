@@ -214,7 +214,7 @@ def _load_cities(version_id: str) -> list[dict[str, float | str]]:
     reader = csv.reader(io.StringIO(text), delimiter="\t")
     next(reader)  # header
     return [
-        {"name": row[0], "latitude": float(row[1]), "longitude": float(row[2])}
+        {"name": row[0], "latitude_deg": float(row[1]), "longitude_deg": float(row[2])}
         for row in reader
         if row
     ]
@@ -228,13 +228,13 @@ class CityRow(pyd.BaseModel):
         description="Human-readable city name.",
         examples=["Los Angeles", "Tokyo"],
     )
-    latitude: float = pyd.Field(
+    latitude_deg: float = pyd.Field(
         title="Latitude",
         description="Decimal-degrees latitude (WGS84).",
         examples=[34.0522, -33.9249],
         json_schema_extra={"units": "deg"},
     )
-    longitude: float = pyd.Field(
+    longitude_deg: float = pyd.Field(
         title="Longitude",
         description="Decimal-degrees longitude (WGS84).",
         examples=[-118.2437, 18.4241],
@@ -255,7 +255,7 @@ class WeatherInputCities(fb.Table):
     """
 
     id: ClassVar[str] = "weather_input_cities"
-    description: ClassVar[str] = "Per-version (name, latitude, longitude) catalog."
+    description: ClassVar[str] = "Per-version (name, latitude_deg, longitude_deg) catalog."
     supported_versions: ClassVar[tuple[Enum, ...]] = _SUPPORTED
     row_schema: ClassVar[type[pyd.BaseModel]] = CityRow
 
@@ -288,8 +288,8 @@ WeatherHTTPRequestGroup = fb.make_http_request_group_table(
 WeatherHTTPRequestExtra = fb.make_http_request_extra_table(
     "weather",
     city_name=str,
-    latitude=float,
-    longitude=float,
+    latitude_deg=float,
+    longitude_deg=float,
 )
 
 
@@ -302,7 +302,7 @@ class WeatherHTTPDB(fb.HTTPDB):
     * one ``WeatherHTTPRequestGroup`` row carrying the version's
       audit fields (``version_id``, ``forecast_days``, ``cities_count``).
     * one ``WeatherHTTPRequestExtra`` row per city with denormalized
-      ``city_name`` / ``latitude`` / ``longitude``.
+      ``city_name`` / ``latitude_deg`` / ``longitude_deg``.
     * one ``fb.HTTPRequest`` row per city, FK-linked to both extras.
     """
 
@@ -347,15 +347,15 @@ class WeatherHTTPDB(fb.HTTPDB):
             )
             for row in cities_rows:
                 name = row["name"]
-                lat = row["latitude"]
-                lon = row["longitude"]
+                lat = row["latitude_deg"]
+                lon = row["longitude_deg"]
                 extra_id = uuid.uuid4()
                 session.add(
                     WeatherHTTPRequestExtra(  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
                         http_request_extra_id=extra_id,
                         city_name=name,
-                        latitude=lat,
-                        longitude=lon,
+                        latitude_deg=lat,
+                        longitude_deg=lon,
                     )
                 )
                 session.add(
@@ -388,7 +388,7 @@ class WeatherResponseFiles(fb.Composite):
     """One ``<city>.json`` file per successful HTTP response.
 
     The city name comes straight from a join on
-    ``WeatherHTTPRequestExtra`` — no URL parsing, no reverse lat/lon
+    ``WeatherHTTPRequestExtra``, no URL parsing, no reverse lat/lon
     lookup. This is the payoff of the per-request Extra table.
     """
 
@@ -827,7 +827,7 @@ class WeatherFigure(fb.Figure):
 
         self.local_dir.mkdir(parents=True, exist_ok=True)
         with open(self.path_to_format(fb.FigureFormat.PKL), "wb") as f:
-            # matplotlib figures pickle internal itertools state — Python 3.14
+            # matplotlib figures pickle internal itertools state; Python 3.14
             # deprecates that, but we don't use the affected APIs.
             with warnings.catch_warnings():
                 warnings.filterwarnings(

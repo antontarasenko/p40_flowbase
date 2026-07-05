@@ -1,16 +1,19 @@
 """Smoke test for p40_weather: imports and end-to-end build with mocked HTTP."""
 
 import json
+from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
+import p40_flowbase as fb
+import pyarrow.compute as pc
 import pytest
 import sqlmodel as sm
 
-import p40_flowbase as fb
-
 
 @pytest.fixture
-def local_data(tmp_path):
+def local_data(tmp_path: Path) -> Path:
+    """Point the framework's data root at a fresh temp dir; return that path."""
     fb.DataObject.set_local_data(str(tmp_path))
     return tmp_path
 
@@ -33,7 +36,7 @@ def _canned_response(latitude: float, longitude: float) -> str:
     )
 
 
-def test_imports():
+def test_imports() -> None:
     """Every public symbol importable."""
     from p40_weather.definitions import defs
     from p40_weather.helpers import build_forecast_url
@@ -67,9 +70,12 @@ def test_imports():
     assert WeatherDoc.id == "weather_doc"
 
 
-def test_context_files_manual_composite(local_data):
+def test_context_files_manual_composite(local_data: Path) -> None:
     """``WeatherContextFiles`` materializes empty and is protected."""
-    from p40_weather.objects import WeatherContextFiles, WeatherVersions
+    from p40_weather.objects import (
+        WeatherContextFiles,
+        WeatherVersions,
+    )
 
     obj = WeatherContextFiles(WeatherVersions.MAIN)
     obj.make()
@@ -96,7 +102,7 @@ def test_context_files_manual_composite(local_data):
         obj.delete()
 
 
-def test_end_to_end_with_mocked_http(local_data):
+def test_end_to_end_with_mocked_http(local_data: Path) -> None:
     """Run the full pipeline against canned Open-Meteo responses."""
     from p40_weather.objects import (
         WeatherCityNarrativeAgentDB,
@@ -116,27 +122,27 @@ def test_end_to_end_with_mocked_http(local_data):
     cities_obj.make(replace=True)
     assert cities_obj.df.num_rows == 5
     assert sorted(cities_obj.df.column_names) == [
-        "latitude",
-        "longitude",
+        "latitude_deg",
+        "longitude_deg",
         "name",
     ]
 
     canned: dict[tuple[float, float], str] = {
-        (row["latitude"], row["longitude"]): _canned_response(
-            row["latitude"], row["longitude"],
+        (row["latitude_deg"], row["longitude_deg"]): _canned_response(
+            row["latitude_deg"], row["longitude_deg"],
         )
         for row in cities_obj.df.to_pylist()
     }
 
     async def fake_execute_http_request(
         self,
-        http_client,
-        request_method,
-        request_url,
-        request_headers,
-        request_body,
-        ephemeral_headers=None,
-    ):
+        http_client: Any,
+        request_method: str,
+        request_url: str,
+        request_headers: str | None,
+        request_body: str | None,
+        ephemeral_headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         from datetime import (
             UTC,
             datetime,
@@ -243,7 +249,7 @@ def test_end_to_end_with_mocked_http(local_data):
         datetime,
     )
 
-    async def _fake_anthropic(self, task):
+    async def _fake_anthropic(self, task: fb.AgentTask) -> fb.AgentTask:
         del self
         from p40_weather.objects import WeatherCityNarrativeAgentDB
         now = datetime.now(UTC)
@@ -288,7 +294,7 @@ def test_end_to_end_with_mocked_http(local_data):
         m == "claude_sonnet_4_6"
         for m in narrative_table.df["model_id"].to_pylist()
     )
-    assert sum(narrative_table.df["cost_usd"].to_pylist()) == pytest.approx(0.0005)
+    assert pc.sum(narrative_table.df["cost_usd"]).as_py() == pytest.approx(0.0005)
 
     fig = WeatherFigure(WeatherVersions.MAIN)
     fig.make(replace=True)

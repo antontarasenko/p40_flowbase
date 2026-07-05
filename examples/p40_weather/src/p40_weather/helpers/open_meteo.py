@@ -4,7 +4,7 @@ The free Open-Meteo forecast endpoint accepts ``latitude``,
 ``longitude``, and a comma-separated ``hourly`` variable list. No auth
 required. See https://open-meteo.com/en/docs for the schema.
 
-Cities are not defined here anymore — each version's catalog lives in
+Cities are not defined here anymore; each version's catalog lives in
 ``resources/versions/weather_versions/cities-<id>.tsv`` and is
 materialized by ``WeatherInputCities`` (see
 ``p40_weather.objects.weather``).
