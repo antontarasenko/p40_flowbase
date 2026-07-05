@@ -8,6 +8,7 @@ from p40_flowbase.helpers.file_stats import (
     count_files,
     dir_size_bytes,
     file_or_dir_size_bytes,
+    sha256_of_path,
 )
 from p40_flowbase.helpers.jinja_templates import render_jinja_template
 from p40_flowbase.helpers.json_extract import extract_json_from_response
@@ -23,5 +24,6 @@ __all__ = [
     "render_jinja_template",
     "render_readme_html",
     "safe_path_component",
+    "sha256_of_path",
     "validate_arrow_against_pydantic",
 ]

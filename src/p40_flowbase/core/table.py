@@ -256,6 +256,13 @@ class Table(DataObject, DagsterAssetWiring):
         ctx["has_units"] = any(f["units"] for f in fields)
         return ctx
 
+    @override
+    def _meta_optional(self) -> dict[str, Any]:
+        """Add Table-specific meta: row/col counts plus the schema pointer."""
+        opt = super()._meta_optional()
+        opt["schema"] = f"{self.object_stem}.schema.json"
+        return opt
+
     def _convert_to_csv(self) -> None:
         src = self.path_to_format(TableFormat.PARQUET)
         dst = self.path_to_format(TableFormat.CSV)

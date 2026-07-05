@@ -23,6 +23,8 @@ SOFTWARE.
 """
 
 import asyncio
+import importlib.metadata
+import json
 import pathlib
 import shutil
 import time
@@ -32,6 +34,10 @@ from abc import (
 )
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import (
+    UTC,
+    datetime,
+)
 from enum import (
     Enum,
     StrEnum,
@@ -44,6 +50,7 @@ from typing import (
 from p40_flowbase.helpers.file_stats import (
     count_files,
     file_or_dir_size_bytes,
+    sha256_of_path,
 )
 from p40_flowbase.helpers.readme_html import render_readme_html
 from p40_flowbase.logging import (
@@ -81,6 +88,18 @@ def resolve_anchor_package(obj: "DataObject") -> str:
     if pkg is not None:
         return pkg
     return cls.__module__.split(".")[0]
+
+
+def _producer_version(package: str) -> str | None:
+    """Installed version of the producing distribution, or ``None``.
+
+    Best-effort: a user's object package need not be an installed
+    distribution, so a missing package is not an error.
+    """
+    try:
+        return importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        return None
 
 
 def format_summary(phase: str, kvs: dict[str, Any]) -> str:
@@ -251,6 +270,10 @@ class DataObject(ABC):
     def path_to_readme(self) -> pathlib.Path:
         return self.local_dir / f"{self.object_stem}.readme.html"
 
+    @property
+    def path_to_meta(self) -> pathlib.Path:
+        return self.local_dir / f"{self.object_stem}.meta.json"
+
     def exists(self) -> bool:
         """Check whether the master copy of this data object exists.
 
@@ -285,6 +308,66 @@ class DataObject(ABC):
         subclass-only attributes. Overrides should call ``super()``.
         """
         self._write_readme()
+
+    def _meta_context(self) -> dict[str, Any]:
+        """Definition-derived metadata; subclasses extend via ``super()``.
+
+        Consumer-facing, Dagster-independent provenance: identity,
+        version, producing distribution, and direct upstream ids (from
+        ``asset_deps`` when present). The runtime facts (``made_at_utc``,
+        content ``bytes``/``sha256``) are added by :meth:`_write_meta`.
+        """
+        v = self.version.value
+        cls = type(self)
+        top_package = cls.__module__.split(".")[0]
+        deps: tuple[type[DataObject], ...] = getattr(cls, "asset_deps", ())
+        return {
+            "object_id": self.id,
+            "object_stem": self.object_stem,
+            "description": self.description,
+            "version": {"id": v.id, "name": v.name, "description": v.description},
+            "master_format": self.make_format.value,
+            "producer": {
+                "package": top_package,
+                "version": _producer_version(top_package),
+                "class": f"{cls.__module__}.{cls.__qualname__}",
+            },
+            "lineage": {"deps": [dep.id for dep in deps]},
+        }
+
+    def _meta_optional(self) -> dict[str, Any]:
+        """Class-specific meta fields; **consumers must not rely on these**.
+
+        Everything non-uniform across object classes goes here, so every
+        root field of ``meta.json`` stays predictable. Sourced from
+        ``_make_summary`` so the descriptors (Table rows/cols, DB tables,
+        Composite files) match the ``make_summary`` log line. Empty for
+        classes that declare none (e.g. ``Figure``). Subclasses extend
+        via ``super()``.
+        """
+        return dict(self._make_summary())
+
+    def _write_meta(self) -> None:
+        """Write ``<object_stem>.meta.json``: a runtime provenance record.
+
+        Not deterministic (timestamp, size, content hash), so it lives
+        outside :meth:`_write_assets`. Root fields are uniform across all
+        object classes; every class-specific field is nested under
+        ``optional`` (see :meth:`_meta_optional`).
+        """
+        master_path = self.path_to_format(self.make_format)
+        meta = {
+            **self._meta_context(),
+            "made_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "content": {
+                "bytes": file_or_dir_size_bytes(master_path),
+                "sha256": sha256_of_path(master_path),
+            },
+            "optional": self._meta_optional(),
+        }
+        self.path_to_meta.write_text(
+            json.dumps(meta, indent=2, ensure_ascii=False) + "\n"
+        )
 
     def _delete_format(self, fmt: StrEnum) -> None:
         """Delete a specific format of the object."""
@@ -443,6 +526,7 @@ class DataObject(ABC):
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
             self._write_assets()
+            self._write_meta()
             self._run_checks()
 
     async def amake(self, replace: bool = False) -> None:
@@ -474,6 +558,7 @@ class DataObject(ABC):
                 raise
             self._emit_make_summary(time.perf_counter() - t0)
             self._write_assets()
+            self._write_meta()
             await self._arun_checks()
 
     def convert(self, fmt: StrEnum | None = None, replace: bool = False) -> None:

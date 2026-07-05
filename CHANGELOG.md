@@ -2,6 +2,7 @@
 
 ## Branch `main`
 
+- Add `<object_id>.meta.json` to data object assets
 - Add `<object_id>.schema.json` to `Table` object assets
 
 ## 0.7.1 (2026-06-28)
