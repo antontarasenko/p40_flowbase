@@ -49,10 +49,10 @@ coverage report
 
 1. Update `CHANGELOG.md`
 
-1. Update `flake.nix` (`scmVersionOverlay`):
+1. Update the `VERSION` file:
 
     ```
-    version = "1.2.3";
+    echo "1.2.3" > VERSION
     ```
 
 1. Rebuild:
