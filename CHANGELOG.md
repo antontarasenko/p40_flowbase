@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.8.0 (2026-07-06)
+
 - Table: For JSON format, convert to NDJSON instead of array of objects
 - Table: Spill to disk if a query exceeds memory (`sql_memory_limit` / `sql_temp_directory`)
 - Table: Add DuckDB `save_sql` to stream a SQL query to Parquet without materializing
