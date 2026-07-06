@@ -8,7 +8,6 @@ import json
 import pathlib
 from abc import abstractmethod
 from collections.abc import Callable
-from enum import Enum
 from typing import (
     Any,
     ClassVar,
@@ -26,7 +25,10 @@ from p40_flowbase.core.base import DataObject
 from p40_flowbase.core.database import DB
 from p40_flowbase.core.formats import TableFormat
 from p40_flowbase.dagster.wiring import DagsterAssetWiring
-from p40_flowbase.helpers.arrow_schema import validate_arrow_against_pydantic
+from p40_flowbase.helpers.arrow_schema import (
+    validate_arrow_against_pydantic,
+    validate_arrow_schema_against_pydantic,
+)
 from p40_flowbase.helpers.jinja_templates import render_jinja_template
 
 
@@ -79,9 +81,7 @@ class Table(DataObject, DagsterAssetWiring):
     Escape hatches
     --------------
     Override ``_make`` if you need Jinja vars, want to register UDFs,
-    or build the Arrow table without DuckDB. Always end your custom
-    build by calling ``self.save_arrow(arrow)`` so schema validation
-    still runs before write::
+    or build without a template::
 
         @override
         def _make(self) -> None:
@@ -90,8 +90,33 @@ class Table(DataObject, DagsterAssetWiring):
                 duckdb_setup=lambda c: c.execute("SET TimeZone='UTC'"),
             )
 
-    For non-template builds, do the work yourself and call
-    ``self.save_arrow(arrow)`` to persist with validation.
+    Two write hooks, both schema-validate before persisting:
+
+    - :meth:`save_sql` — stream a DuckDB query straight to parquet
+      (``COPY (query) TO``). Never materializes the result in Python;
+      use it for large or out-of-core builds.
+    - :meth:`save_arrow` — persist a ``pa.Table`` you already hold in
+      memory. Use it for small results or DB extractions (``TableFromDB``).
+
+    Reading a Table into Python
+    ---------------------------
+    The single read surface is :meth:`sql`: it runs SQL over this
+    object's master parquet, out-of-core, with the parquet exposed as
+    the view ``t``. It returns a lazy DuckDB relation; only what you pull
+    into Python lives in RAM::
+
+        n = obj.sql("SELECT COUNT(*) FROM t").fetchone()[0]     # scalar, no materialize
+        table = obj.sql().to_arrow_table()                               # whole table → pyarrow
+        rows = obj.sql("SELECT city FROM t").to_arrow_table().to_pylist()
+
+    Cross into Python through ``.to_arrow_table()`` (pyarrow is already a
+    dependency); from a ``pa.Table`` use ``.to_pylist()``, column access,
+    metadata. ``.to_arrow_table()`` materializes the **whole** table — bind it to a
+    local and reuse that local as your cache, but **only for small
+    tables**. The point of ``sql`` is to keep large tables out of RAM:
+    filter/aggregate in SQL, or stream batches via
+    ``obj.sql().to_arrow_reader(batch_size)``. Do not reach for ``.df()``
+    / ``.pl()`` unless your project already depends on pandas / polars.
 
     Attributes
     ----------
@@ -108,7 +133,9 @@ class Table(DataObject, DagsterAssetWiring):
 
     Supported on-disk formats
     -------------------------
-    PARQUET (master, default), CSV, TSV, JSON.
+    PARQUET (master, default), CSV, TSV, JSON (newline-delimited). All
+    side formats are produced by streaming the master parquet through
+    DuckDB ``COPY``, so ``convert`` is bounded in memory.
     """
 
     make_format: ClassVar[TableFormat] = TableFormat.PARQUET  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -116,16 +143,47 @@ class Table(DataObject, DagsterAssetWiring):
     template_package: ClassVar[str | None] = None
     readme_kind: ClassVar[str] = "table"
 
-    def __init__(self, version: Enum) -> None:
-        super().__init__(version)
-        self._table: pa.Table | None = None
+    #: DuckDB ``memory_limit`` for :meth:`sql` / :meth:`save_sql` / convert.
+    #: ``None`` keeps the DuckDB default (~80% of system RAM).
+    sql_memory_limit: ClassVar[str | None] = None
+    #: DuckDB ``temp_directory`` (spill target) for the same paths.
+    #: ``None`` spills into the object's ``local_dir``.
+    sql_temp_directory: ClassVar[str | None] = None
 
-    @property
-    def df(self) -> pa.Table:
-        """Return the object as a pyarrow Table (lazy loading)."""
-        if self._table is None:
-            self._table = pq.read_table(self.path_to_format(TableFormat.PARQUET))
-        return self._table
+    def _duckdb_connection(self) -> duckdb.DuckDBPyConnection:
+        """Return a DuckDB connection configured to spill to disk.
+
+        Sets ``temp_directory`` (default: ``local_dir``) so large scans
+        and aggregations spill instead of pressuring RAM, and
+        ``memory_limit`` when ``sql_memory_limit`` is set. Shared by the
+        query surface (:meth:`sql`), the streaming write (:meth:`save_sql`),
+        and the format converters.
+        """
+        self.local_dir.mkdir(parents=True, exist_ok=True)
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "SET temp_directory = ?",
+            [self.sql_temp_directory or str(self.local_dir)],
+        )
+        if self.sql_memory_limit is not None:
+            con.execute("SET memory_limit = ?", [self.sql_memory_limit])
+        return con
+
+    def sql(self, query: str = "SELECT * FROM t") -> duckdb.DuckDBPyRelation:
+        """Query this object's master parquet out-of-core; the table is ``t``.
+
+        Returns a lazy DuckDB relation over the master parquet (exposed as
+        the view ``t``). DuckDB streams and spills to ``temp_directory``;
+        only the terminal you pull (``.to_arrow_table()``, ``.fetchone()``,
+        ``.to_arrow_reader(n)``) lives in Python memory. See the class
+        docstring for the full read path.
+        """
+        con = self._duckdb_connection()
+        path = str(self.path_to_format(TableFormat.PARQUET)).replace("'", "''")
+        con.execute(
+            f"CREATE OR REPLACE VIEW t AS SELECT * FROM read_parquet('{path}')"  # noqa: S608
+        )
+        return con.sql(query)
 
     @property
     def path_to_schema(self) -> pathlib.Path:
@@ -153,13 +211,12 @@ class Table(DataObject, DagsterAssetWiring):
         self._write_schema()
 
     def save_arrow(self, arrow: pa.Table, *, validate: bool = True) -> None:
-        """Validate ``arrow`` against ``row_schema`` then write parquet.
+        """Validate an in-memory ``pa.Table`` against ``row_schema``, write parquet.
 
-        This is the single write hook for every ``_make``/``_amake``
-        body — the default ``_make`` calls it, ``make_via_sql_template``
-        calls it, ``TableFromDB._amake`` calls it, and custom overrides
-        should call it instead of ``pq.write_table`` directly so the
-        schema check is never skipped by accident.
+        The in-memory write hook: for results you already hold whole in
+        RAM (small tables, ``pa.Table.from_pylist(...)`` builds, and
+        ``TableFromDB._amake`` DB extractions). For large or out-of-core
+        builds use :meth:`save_sql`, which never materializes the result.
 
         :param arrow: PyArrow table to persist.
         :param validate: When ``True`` (default), raise ``ValueError``
@@ -172,7 +229,45 @@ class Table(DataObject, DagsterAssetWiring):
                 arrow_table=arrow, model=self.row_schema,
             )
         pq.write_table(arrow, self.path_to_format(TableFormat.PARQUET))
-        self._table = arrow
+
+    def save_sql(
+        self,
+        query: str,
+        *,
+        duckdb_setup: Callable[[duckdb.DuckDBPyConnection], None] | None = None,
+        validate: bool = True,
+    ) -> None:
+        """Stream a DuckDB ``query`` straight to the master parquet.
+
+        The out-of-core write hook: ``COPY (query) TO parquet`` runs the
+        query and writes the result to disk without ever materializing it
+        in Python, so a build that scans/joins/aggregates hundreds of
+        millions of rows stays bounded in memory. The query's output
+        schema is derived from a zero-row relation and validated against
+        ``row_schema`` **before** the write, so an invalid schema never
+        reaches disk.
+
+        :param query: A single ``SELECT`` statement (a trailing ``;`` is
+            stripped). Reference upstream sources with ``read_parquet(...)``.
+        :param duckdb_setup: Optional callback to register UDFs, attach
+            databases, or configure the connection before execution.
+        :param validate: When ``True`` (default), validate the output
+            schema against ``row_schema`` before writing.
+        """
+        dst = str(self.path_to_format(TableFormat.PARQUET)).replace("'", "''")
+        stmt = query.strip().rstrip(";").strip()
+        con = self._duckdb_connection()
+        try:
+            if duckdb_setup is not None:
+                duckdb_setup(con)
+            if validate:
+                schema = con.sql(stmt).limit(0).to_arrow_table().schema
+                validate_arrow_schema_against_pydantic(
+                    schema=schema, model=self.row_schema,
+                )
+            con.execute(f"COPY ({stmt}) TO '{dst}' (FORMAT parquet)")
+        finally:
+            con.close()
 
     def make_via_sql_template(
         self,
@@ -210,14 +305,7 @@ class Table(DataObject, DagsterAssetWiring):
             subpath=subpath,
             **(template_vars or {}),
         )
-        con = duckdb.connect(":memory:")
-        try:
-            if duckdb_setup is not None:
-                duckdb_setup(con)
-            arrow = con.execute(sql).to_arrow_table()
-        finally:
-            con.close()
-        self.save_arrow(arrow)
+        self.save_sql(sql, duckdb_setup=duckdb_setup)
 
     @override
     def _make(self) -> None:
@@ -233,8 +321,8 @@ class Table(DataObject, DagsterAssetWiring):
 
     @override
     def _make_summary(self) -> dict[str, Any]:
-        df = self.df
-        return {"rows": df.num_rows, "cols": df.num_columns}
+        md = pq.read_metadata(self.path_to_format(TableFormat.PARQUET))
+        return {"rows": md.num_rows, "cols": md.num_columns}
 
     @override
     def _readme_context(self) -> dict[str, Any]:
@@ -263,22 +351,32 @@ class Table(DataObject, DagsterAssetWiring):
         opt["schema"] = f"{self.object_stem}.schema.json"
         return opt
 
+    def _copy_master_to(self, dst_fmt: TableFormat, copy_options: str) -> None:
+        """Stream the master parquet to ``dst_fmt`` via DuckDB ``COPY``.
+
+        Reads the master with ``read_parquet`` and writes the side format
+        row-by-row, so a convert never holds the full table in memory.
+        """
+        src = str(self.path_to_format(TableFormat.PARQUET)).replace("'", "''")
+        dst = str(self.path_to_format(dst_fmt)).replace("'", "''")
+        con = self._duckdb_connection()
+        try:
+            con.execute(
+                f"COPY (SELECT * FROM read_parquet('{src}')) "  # noqa: S608
+                f"TO '{dst}' ({copy_options})"
+            )
+        finally:
+            con.close()
+
     def _convert_to_csv(self) -> None:
-        src = self.path_to_format(TableFormat.PARQUET)
-        dst = self.path_to_format(TableFormat.CSV)
-        duckdb.read_parquet(str(src)).write_csv(str(dst), header=True)
+        self._copy_master_to(TableFormat.CSV, "FORMAT csv, HEADER")
 
     def _convert_to_tsv(self) -> None:
-        src = self.path_to_format(TableFormat.PARQUET)
-        dst = self.path_to_format(TableFormat.TSV)
-        duckdb.read_parquet(str(src)).write_csv(str(dst), header=True, sep="\t")
+        self._copy_master_to(TableFormat.TSV, "FORMAT csv, HEADER, DELIMITER '\t'")
 
     def _convert_to_json(self) -> None:
-        """Convert parquet to json (array of records, indented)."""
-        src = self.path_to_format(TableFormat.PARQUET)
-        dst = self.path_to_format(TableFormat.JSON)
-        rows = pq.read_table(src).to_pylist()
-        dst.write_text(json.dumps(rows, indent=2, default=str))
+        """Convert parquet to newline-delimited JSON (one record per line)."""
+        self._copy_master_to(TableFormat.JSON, "FORMAT json")
 
 
 TDB = TypeVar("TDB", bound=DB)

@@ -142,7 +142,7 @@ def test_plain_table_asset_materializes(test_local_data):
 
     table = _PlainTable(_V.V1)
     assert table.path_to_format(TableFormat.PARQUET).exists()
-    df = table.df
+    df = table.sql().to_arrow_table()
     assert df["n"].to_pylist() == [1, 2]
 
 
@@ -165,7 +165,7 @@ def test_table_from_db_asset_materializes(test_local_data):
 
     table = _AFTable(_V.V1)
     assert table.path_to_format(TableFormat.PARQUET).exists()
-    df = table.df
+    df = table.sql().to_arrow_table()
     assert sorted(df["n"].to_pylist()) == [10, 20]  # type: ignore[type-var]
 
 

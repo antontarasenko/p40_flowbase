@@ -75,7 +75,8 @@ class MinRows(BaseCheck):
     @override
     def run(self, obj: "DataObject") -> None:
         self._require(obj, Table)
-        actual = obj.df.num_rows  # type: ignore[attr-defined]
+        row = obj.sql("SELECT COUNT(*) FROM t").fetchone()  # type: ignore[attr-defined]
+        actual = row[0] if row else 0
         if actual < self.n:
             raise CheckFailedError(f"{self.name}: got {actual}")
 
@@ -83,8 +84,9 @@ class MinRows(BaseCheck):
 class NoNulls(BaseCheck):
     """Fail if any of ``cols`` contains a null value.
 
-    Reads ``obj.df.column(c).null_count`` for each requested column.
-    Cheap (O(rows) per column).
+    Streams a single ``COUNT(*) FILTER (WHERE c IS NULL)`` over the
+    requested columns via ``obj.sql`` — reads only those columns, never
+    the whole table.
     """
 
     def __init__(self, *cols: str) -> None:
@@ -96,15 +98,20 @@ class NoNulls(BaseCheck):
     @override
     def run(self, obj: "DataObject") -> None:
         self._require(obj, Table)
-        df = obj.df  # type: ignore[attr-defined]
-        offenders: list[str] = []
+        names = obj.sql().columns  # type: ignore[attr-defined]
         for col in self.cols:
-            if col not in df.column_names:
+            if col not in names:
                 raise CheckFailedError(
-                    f"{self.name}: column '{col}' not in {df.column_names}"
+                    f"{self.name}: column '{col}' not in {names}"
                 )
-            if df.column(col).null_count > 0:
-                offenders.append(f"{col}={df.column(col).null_count}")
+        exprs = ", ".join(
+            f'COUNT(*) FILTER (WHERE "{c}" IS NULL)' for c in self.cols
+        )
+        row = obj.sql(f"SELECT {exprs} FROM t").fetchone()  # type: ignore[attr-defined]  # noqa: S608
+        counts = row if row is not None else [0] * len(self.cols)
+        offenders = [
+            f"{c}={n}" for c, n in zip(self.cols, counts, strict=True) if n
+        ]
         if offenders:
             raise CheckFailedError(f"{self.name}: nulls in {','.join(offenders)}")
 
@@ -112,8 +119,8 @@ class NoNulls(BaseCheck):
 class Unique(BaseCheck):
     """Fail if the row tuple over ``cols`` has duplicates.
 
-    Uses ``pyarrow.compute.group_by`` for the count; comparable to a
-    SQL ``GROUP BY ... HAVING COUNT(*) > 1`` in cost.
+    Streams ``GROUP BY cols`` via ``obj.sql`` and reports the largest
+    group; the aggregation spills to disk under memory pressure.
     """
 
     def __init__(self, *cols: str) -> None:
@@ -124,20 +131,20 @@ class Unique(BaseCheck):
 
     @override
     def run(self, obj: "DataObject") -> None:
-        import pyarrow.compute as pc
-
         self._require(obj, Table)
-        df = obj.df  # type: ignore[attr-defined]
+        names = obj.sql().columns  # type: ignore[attr-defined]
         for col in self.cols:
-            if col not in df.column_names:
+            if col not in names:
                 raise CheckFailedError(
-                    f"{self.name}: column '{col}' not in {df.column_names}"
+                    f"{self.name}: column '{col}' not in {names}"
                 )
-        sub = df.select(list(self.cols))
-        grouped = sub.group_by(list(self.cols)).aggregate([([], "count_all")])
-        counts = grouped.column("count_all")
-        max_count = pc.max(counts).as_py() if grouped.num_rows else 0
-        if max_count and max_count > 1:
+        cols_sql = ", ".join(f'"{c}"' for c in self.cols)
+        row = obj.sql(  # type: ignore[attr-defined]
+            f"SELECT max(cnt) FROM (SELECT COUNT(*) AS cnt "  # noqa: S608
+            f"FROM t GROUP BY {cols_sql})"
+        ).fetchone()
+        max_count = row[0] if row and row[0] is not None else 0
+        if max_count > 1:
             raise CheckFailedError(
                 f"{self.name}: max group size = {max_count}"
             )

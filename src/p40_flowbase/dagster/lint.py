@@ -21,7 +21,6 @@ from typing import override
 
 from p40_flowbase.core.base import DataObject
 
-
 #: Method names whose source we scan for upstream class references.
 #: Covers all populate hooks, sync/async make, TableFromDB build, and
 #: Document data-prep. Add new hooks here if the framework grows.

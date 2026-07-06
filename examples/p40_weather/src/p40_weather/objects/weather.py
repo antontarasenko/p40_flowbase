@@ -250,7 +250,7 @@ class WeatherInputCities(fb.Table):
     writes a parquet validated against ``CityRow``. Lifting the catalog
     into its own ``DataObject`` keeps ``WeatherVersions`` import-time
     pure (no disk IO at class-body evaluation) and gives downstream
-    stages a single source of truth they can ``.df``-read like any
+    stages a single source of truth they can ``.sql``-query like any
     other parquet.
     """
 
@@ -332,8 +332,15 @@ class WeatherHTTPDB(fb.HTTPDB):
 
     async def _populate_http_requests(self) -> uuid.UUID:
         wv = _wv(self.version)
-        cities_df = WeatherInputCities(self.version).df
-        cities_rows: list[dict[str, Any]] = cities_df.to_pylist()
+        # Pattern: project exactly the columns needed, in SQL, then cross
+        # into Python via .to_arrow_table().to_pylist(). Small catalog, so
+        # a full materialize is fine.
+        cities_rows: list[dict[str, Any]] = (
+            WeatherInputCities(self.version)
+            .sql("SELECT name, latitude_deg, longitude_deg FROM t")
+            .to_arrow_table()
+            .to_pylist()
+        )
         group_id = uuid.uuid4()
         async with self.session_factory() as session:
             session.add(
@@ -685,8 +692,12 @@ class WeatherCityNarrativeAgentDB(fb.AgentDB):
 
     async def _populate_agent_tasks(self) -> uuid.UUID:
         wv = _wv(self.version)
+        # Pattern: order in SQL so the agent tasks are built deterministically.
         summary_rows: list[dict[str, Any]] = (
-            WeatherSummaryTable(self.version).df.to_pylist()
+            WeatherSummaryTable(self.version)
+            .sql("SELECT * FROM t ORDER BY city")
+            .to_arrow_table()
+            .to_pylist()
         )
         group_id = uuid.uuid4()
         async with self.session_factory() as session:
@@ -815,7 +826,14 @@ class WeatherFigure(fb.Figure):
 
     @override
     def _make(self) -> None:
-        summary = WeatherSummaryTable(self.version).df
+        # Pattern: project the two columns the chart needs, ordered, then
+        # bind the pyarrow table to a local and reuse it (the local is the
+        # cache — fine here because the summary is one row per city).
+        summary = (
+            WeatherSummaryTable(self.version)
+            .sql("SELECT city, temp_mean_c FROM t ORDER BY city")
+            .to_arrow_table()
+        )
         cities: list[str] = summary["city"].to_pylist()  # type: ignore[assignment]
         means: list[float] = summary["temp_mean_c"].to_pylist()  # type: ignore[assignment]
 
@@ -877,17 +895,35 @@ class WeatherDoc(fb.Document):
             figure.convert(fb.FigureFormat.SVG)
         svg_text = svg_path.read_text()
 
-        summary_table = _markdown_table(WeatherSummaryTable(self.version).df)
+        summary = WeatherSummaryTable(self.version)
 
-        narrative_rows = (
-            WeatherCityNarrativeTable(self.version).df.to_pylist()
+        # Pattern: a headline answered by a scalar query, straight from the
+        # parquet — .fetchone() never materializes the table. The summary
+        # always has >=1 row (its MinRows check), so the row is non-None.
+        warmest = summary.sql(
+            "SELECT city, temp_mean_c FROM t ORDER BY temp_mean_c DESC LIMIT 1"
+        ).fetchone()
+        assert warmest is not None
+        warmest_city, peak_mean_c = warmest
+        headline = (
+            f"Warmest city: {warmest_city} ({peak_mean_c:.1f} °C mean)."
         )
-        narratives = [
-            {"city": r["city"], "narrative": r["narrative"]}
-            for r in narrative_rows
-        ]
+
+        # Pattern: materialize the small summary once, ordered, for the table.
+        summary_table = _markdown_table(
+            summary.sql("SELECT * FROM t ORDER BY city").to_arrow_table()
+        )
+
+        # Pattern: project only the columns the report renders.
+        narratives = (
+            WeatherCityNarrativeTable(self.version)
+            .sql("SELECT city, narrative FROM t ORDER BY city")
+            .to_arrow_table()
+            .to_pylist()
+        )
 
         self.data = {
+            "headline": headline,
             "summary_table": summary_table,
             "figure_svg": svg_text,
             "narratives": narratives,

@@ -120,8 +120,9 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
     # Materialize the cities catalog first; downstream stages read from it.
     cities_obj = WeatherInputCities(WeatherVersions.MAIN)
     cities_obj.make(replace=True)
-    assert cities_obj.df.num_rows == 5
-    assert sorted(cities_obj.df.column_names) == [
+    cities_arrow = cities_obj.sql().to_arrow_table()
+    assert cities_arrow.num_rows == 5
+    assert sorted(cities_arrow.column_names) == [
         "latitude_deg",
         "longitude_deg",
         "name",
@@ -131,7 +132,7 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
         (row["latitude_deg"], row["longitude_deg"]): _canned_response(
             row["latitude_deg"], row["longitude_deg"],
         )
-        for row in cities_obj.df.to_pylist()
+        for row in cities_arrow.to_pylist()
     }
 
     async def fake_execute_http_request(
@@ -222,8 +223,9 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
 
     hourly = WeatherHourlyTable(WeatherVersions.MAIN)
     hourly.make(replace=True)
-    assert hourly.df.num_rows == 15  # 5 cities x 3 hours
-    assert sorted(hourly.df.column_names) == [
+    hourly_arrow = hourly.sql().to_arrow_table()
+    assert hourly_arrow.num_rows == 15  # 5 cities x 3 hours
+    assert sorted(hourly_arrow.column_names) == [
         "city",
         "precip_mm",
         "temp_c",
@@ -232,8 +234,9 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
 
     summary = WeatherSummaryTable(WeatherVersions.MAIN)
     summary.make(replace=True)
-    assert summary.df.num_rows == 5
-    assert sorted(summary.df.column_names) == [
+    summary_arrow = summary.sql().to_arrow_table()
+    assert summary_arrow.num_rows == 5
+    assert sorted(summary_arrow.column_names) == [
         "city",
         "precip_total_mm",
         "temp_max_c",
@@ -282,8 +285,9 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
 
     narrative_table = WeatherCityNarrativeTable(WeatherVersions.MAIN)
     narrative_table.make(replace=True)
-    assert narrative_table.df.num_rows == 5
-    assert sorted(narrative_table.df.column_names) == [
+    narrative_arrow = narrative_table.sql().to_arrow_table()
+    assert narrative_arrow.num_rows == 5
+    assert sorted(narrative_arrow.column_names) == [
         "city",
         "cost_usd",
         "model_id",
@@ -292,9 +296,9 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
     # All narratives produced by the mocked agent
     assert all(
         m == "claude_sonnet_4_6"
-        for m in narrative_table.df["model_id"].to_pylist()
+        for m in narrative_arrow["model_id"].to_pylist()
     )
-    assert pc.sum(narrative_table.df["cost_usd"]).as_py() == pytest.approx(0.0005)
+    assert pc.sum(narrative_arrow["cost_usd"]).as_py() == pytest.approx(0.0005)
 
     fig = WeatherFigure(WeatherVersions.MAIN)
     fig.make(replace=True)

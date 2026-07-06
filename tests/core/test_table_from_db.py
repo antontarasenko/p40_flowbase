@@ -88,10 +88,10 @@ class TestTableFromDB:
         assert set(result["name"].to_pylist()) == {"alpha", "beta"}
 
     @pytest.mark.asyncio
-    async def test_df_property_reads_written_parquet(self, populated_widget_db):
+    async def test_sql_reads_written_parquet(self, populated_widget_db):
         table = _WidgetsTable(_Version.V1)
         await table._amake()  # pyright: ignore[reportPrivateUsage]
-        df = table.df
+        df = table.sql().to_arrow_table()
         assert df.num_rows == 2
         assert set(df["value"].to_pylist()) == {10, 20}
 

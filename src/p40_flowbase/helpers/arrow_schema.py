@@ -12,8 +12,11 @@ width on the Pydantic side.
 Public API
 ----------
 - :func:`arrow_schema_from_pydantic` — derive ``pa.Schema`` from a model.
-- :func:`validate_arrow_against_pydantic` — raise ``ValueError`` listing
-  every column/type diff.
+- :func:`validate_arrow_schema_against_pydantic` — validate a ``pa.Schema``
+  (used by the streaming write path, which derives the schema from a
+  zero-row relation without materializing the table).
+- :func:`validate_arrow_against_pydantic` — same, for a materialized
+  ``pa.Table``.
 """
 
 import datetime as _dt
@@ -107,18 +110,22 @@ def _types_compatible(
     return False
 
 
-def validate_arrow_against_pydantic(
+def validate_arrow_schema_against_pydantic(
     *,
-    arrow_table: pa.Table,
+    schema: pa.Schema,
     model: type[pyd.BaseModel],
 ) -> None:
-    """Raise ``ValueError`` listing every column/type diff.
+    """Raise ``ValueError`` listing every column/type diff for a schema.
+
+    Schema-only validator: the streaming write path derives ``schema``
+    from a zero-row relation (``con.sql(query).limit(0)``) so a mismatch
+    is caught before any data is written, without materializing the table.
 
     Single raise with the full diff (does not short-circuit on the
     first error) so authors can fix all mismatches in one pass.
     """
     expected = arrow_schema_from_pydantic(model)
-    actual = arrow_table.schema
+    actual = schema
     expected_names = set(expected.names)
     actual_names = set(actual.names)
     diffs: list[str] = []
@@ -140,3 +147,16 @@ def validate_arrow_against_pydantic(
             f"Arrow table does not match Pydantic schema {model.__name__}: "
             + "; ".join(diffs)
         )
+
+
+def validate_arrow_against_pydantic(
+    *,
+    arrow_table: pa.Table,
+    model: type[pyd.BaseModel],
+) -> None:
+    """Raise ``ValueError`` listing every column/type diff.
+
+    Thin wrapper over :func:`validate_arrow_schema_against_pydantic` for
+    callers that already hold a materialized ``pa.Table``.
+    """
+    validate_arrow_schema_against_pydantic(schema=arrow_table.schema, model=model)
