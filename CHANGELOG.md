@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- contrib: Remove `env_vars_required`, add `.local.envrc` to `.envrc`
+
 ## 0.8.0 (2026-07-06)
 
 - Table: For JSON format, convert to NDJSON instead of array of objects
