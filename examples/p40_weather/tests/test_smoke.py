@@ -41,14 +41,14 @@ def test_imports() -> None:
     from p40_weather.definitions import defs
     from p40_weather.helpers import build_forecast_url
     from p40_weather.objects import (
-        WeatherContextFiles,
-        WeatherDoc,
-        WeatherFigure,
-        WeatherHourlyTable,
-        WeatherHTTPDB,
-        WeatherInputCities,
-        WeatherResponseFiles,
-        WeatherSummaryTable,
+        ManualContextFiles,
+        WeatherReportDoc,
+        OpenMeteoCityTempMeanFigure,
+        OpenMeteoCityHourlyTable,
+        OpenMeteoForecastHTTPDB,
+        ManualInputCitiesTable,
+        OpenMeteoForecastResponseFiles,
+        OpenMeteoCitySummaryTable,
         WeatherVersions,
     )
 
@@ -58,26 +58,26 @@ def test_imports() -> None:
     assert build_forecast_url(latitude=0.0, longitude=0.0).startswith(
         "https://api.open-meteo.com/v1/forecast?"
     )
-    assert WeatherContextFiles.id == "weather_context_files"
-    assert WeatherInputCities.id == "weather_input_cities"
-    from p40_weather.objects import WeatherVersionConfig
-    assert WeatherVersionConfig.id == "weather_version_config"
-    assert WeatherHTTPDB.id == "weather_http_db"
-    assert WeatherResponseFiles.id == "weather_response_files"
-    assert WeatherHourlyTable.id == "weather_hourly_table"
-    assert WeatherSummaryTable.id == "weather_summary_table"
-    assert WeatherFigure.id == "weather_figure"
-    assert WeatherDoc.id == "weather_doc"
+    assert ManualContextFiles.id == "manual_context_files"
+    assert ManualInputCitiesTable.id == "manual_input_cities_table"
+    from p40_weather.objects import PipelineVersionConfigTable
+    assert PipelineVersionConfigTable.id == "pipeline_version_config_table"
+    assert OpenMeteoForecastHTTPDB.id == "open_meteo_forecast_http_db"
+    assert OpenMeteoForecastResponseFiles.id == "open_meteo_forecast_response_files"
+    assert OpenMeteoCityHourlyTable.id == "open_meteo_city_hourly_table"
+    assert OpenMeteoCitySummaryTable.id == "open_meteo_city_summary_table"
+    assert OpenMeteoCityTempMeanFigure.id == "open_meteo_city_temp_mean_figure"
+    assert WeatherReportDoc.id == "weather_report_doc"
 
 
 def test_context_files_manual_composite(local_data: Path) -> None:
-    """``WeatherContextFiles`` materializes empty and is protected."""
+    """``ManualContextFiles`` materializes empty and is protected."""
     from p40_weather.objects import (
-        WeatherContextFiles,
+        ManualContextFiles,
         WeatherVersions,
     )
 
-    obj = WeatherContextFiles(WeatherVersions.MAIN)
+    obj = ManualContextFiles(WeatherVersions.MAIN)
     obj.make()
 
     # Populated out-of-band, so make() succeeds on an empty directory.
@@ -105,20 +105,20 @@ def test_context_files_manual_composite(local_data: Path) -> None:
 def test_end_to_end_with_mocked_http(local_data: Path) -> None:
     """Run the full pipeline against canned Open-Meteo responses."""
     from p40_weather.objects import (
-        WeatherCityNarrativeAgentDB,
-        WeatherCityNarrativeTable,
-        WeatherDoc,
-        WeatherFigure,
-        WeatherHourlyTable,
-        WeatherHTTPDB,
-        WeatherInputCities,
-        WeatherResponseFiles,
-        WeatherSummaryTable,
+        AnthropicCityNarrativeAgentDB,
+        AnthropicCityNarrativeTable,
+        WeatherReportDoc,
+        OpenMeteoCityTempMeanFigure,
+        OpenMeteoCityHourlyTable,
+        OpenMeteoForecastHTTPDB,
+        ManualInputCitiesTable,
+        OpenMeteoForecastResponseFiles,
+        OpenMeteoCitySummaryTable,
         WeatherVersions,
     )
 
     # Materialize the cities catalog first; downstream stages read from it.
-    cities_obj = WeatherInputCities(WeatherVersions.MAIN)
+    cities_obj = ManualInputCitiesTable(WeatherVersions.MAIN)
     cities_obj.make(replace=True)
     cities_arrow = cities_obj.sql().to_arrow_table()
     assert cities_arrow.num_rows == 5
@@ -175,27 +175,27 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
         import asyncio
 
         async def _run() -> None:
-            db = WeatherHTTPDB(WeatherVersions.MAIN)
+            db = OpenMeteoForecastHTTPDB(WeatherVersions.MAIN)
             await db.make(replace=True)
             await db.close()
 
         asyncio.run(_run())
 
-    # Audit: WeatherHTTPRequestGroup carries the version metadata.
-    from p40_weather.objects.weather import (
-        WeatherHTTPRequestExtra,
-        WeatherHTTPRequestGroup,
+    # Audit: OpenMeteoHTTPRequestGroup carries the version metadata.
+    from p40_weather.objects import (
+        OpenMeteoHTTPRequestExtra,
+        OpenMeteoHTTPRequestGroup,
     )
 
     async def _check_extras() -> None:
-        db = WeatherHTTPDB(WeatherVersions.MAIN)
+        db = OpenMeteoForecastHTTPDB(WeatherVersions.MAIN)
         try:
             async with db.session_factory() as session:
                 groups = (
-                    await session.exec(sm.select(WeatherHTTPRequestGroup))
+                    await session.exec(sm.select(OpenMeteoHTTPRequestGroup))
                 ).all()
                 extras = (
-                    await session.exec(sm.select(WeatherHTTPRequestExtra))
+                    await session.exec(sm.select(OpenMeteoHTTPRequestExtra))
                 ).all()
             assert len(groups) == 1
             g = groups[0]
@@ -215,13 +215,13 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
 
     asyncio.run(_check_extras())
 
-    files_obj = WeatherResponseFiles(WeatherVersions.MAIN)
+    files_obj = OpenMeteoForecastResponseFiles(WeatherVersions.MAIN)
     files_obj.make(replace=True)
 
     files_dir = files_obj.path_to_format(fb.CompositeFormat.FILES)
     assert len(list(files_dir.glob("*.json"))) == 5
 
-    hourly = WeatherHourlyTable(WeatherVersions.MAIN)
+    hourly = OpenMeteoCityHourlyTable(WeatherVersions.MAIN)
     hourly.make(replace=True)
     hourly_arrow = hourly.sql().to_arrow_table()
     assert hourly_arrow.num_rows == 15  # 5 cities x 3 hours
@@ -232,7 +232,7 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
         "ts_utc",
     ]
 
-    summary = WeatherSummaryTable(WeatherVersions.MAIN)
+    summary = OpenMeteoCitySummaryTable(WeatherVersions.MAIN)
     summary.make(replace=True)
     summary_arrow = summary.sql().to_arrow_table()
     assert summary_arrow.num_rows == 5
@@ -254,9 +254,9 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
 
     async def _fake_anthropic(self, task: fb.AgentTask) -> fb.AgentTask:
         del self
-        from p40_weather.objects import WeatherCityNarrativeAgentDB
+        from p40_weather.objects import AnthropicCityNarrativeAgentDB
         now = datetime.now(UTC)
-        async with WeatherCityNarrativeAgentDB(
+        async with AnthropicCityNarrativeAgentDB(
             WeatherVersions.MAIN
         ).session_factory() as session:
             task.started_at_utc = now
@@ -277,13 +277,13 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
         fb.AgentDB, "_execute_anthropic_agent", new=_fake_anthropic,
     ):
         async def _run_agent() -> None:
-            db = WeatherCityNarrativeAgentDB(WeatherVersions.MAIN)
+            db = AnthropicCityNarrativeAgentDB(WeatherVersions.MAIN)
             await db.make(replace=True)
             await db.close()
 
         asyncio.run(_run_agent())
 
-    narrative_table = WeatherCityNarrativeTable(WeatherVersions.MAIN)
+    narrative_table = AnthropicCityNarrativeTable(WeatherVersions.MAIN)
     narrative_table.make(replace=True)
     narrative_arrow = narrative_table.sql().to_arrow_table()
     assert narrative_arrow.num_rows == 5
@@ -300,12 +300,12 @@ def test_end_to_end_with_mocked_http(local_data: Path) -> None:
     )
     assert pc.sum(narrative_arrow["cost_usd"]).as_py() == pytest.approx(0.0005)
 
-    fig = WeatherFigure(WeatherVersions.MAIN)
+    fig = OpenMeteoCityTempMeanFigure(WeatherVersions.MAIN)
     fig.make(replace=True)
 
     assert fig.path_to_format(fb.FigureFormat.PKL).exists()
 
-    doc = WeatherDoc(WeatherVersions.MAIN)
+    doc = WeatherReportDoc(WeatherVersions.MAIN)
     doc.make(replace=True)
 
     md_text = doc.path_to_format(fb.DocumentFormat.MD).read_text()

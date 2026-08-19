@@ -28,11 +28,11 @@ examples/p40_weather/
 │   └── resources/
 │       ├── templates/
 │       │   ├── tables/
-│       │   │   └── weather_summary_table.sql.jinja
+│       │   │   └── open_meteo_city_summary_table.sql.jinja
 │       │   ├── documents/
-│       │   │   └── weather_doc.md.jinja
+│       │   │   └── weather_report_doc.md.jinja
 │       │   └── prompts/
-│       │       └── weather_city_narrative_agent_db.md.jinja
+│       │       └── anthropic_city_narrative_agent_db.md.jinja
 │       └── versions/
 │           └── weather_versions/
 │               ├── cities-main.tsv
@@ -84,7 +84,7 @@ Force re-creation of selected assets via the `replace` resource:
 
 ```sh
 dg launch -m p40_weather.definitions \
-    --assets 'weather_summary_table*' \
+    --assets 'open_meteo_city_summary_table*' \
     --config-json '{"resources":{"replace":{"config":{"replace":true}}}}'
 ```
 
@@ -104,9 +104,9 @@ Making sync objects (`Table`, `Composite`, `Figure`, `Document`):
 
 ```python
 import p40_flowbase as fb
-from p40_weather.objects import WeatherSummaryTable, WeatherVersions
+from p40_weather.objects import OpenMeteoCitySummaryTable, WeatherVersions
 fb.DataObject.set_local_data("/tmp/p40_weather")
-WeatherSummaryTable(WeatherVersions.MAIN).make(replace=True)
+OpenMeteoCitySummaryTable(WeatherVersions.MAIN).make(replace=True)
 ```
 
 Making async objects (`HTTPDB`, `LLMDB`, `AgentDB`, `TableFromDB`):
@@ -114,16 +114,16 @@ Making async objects (`HTTPDB`, `LLMDB`, `AgentDB`, `TableFromDB`):
 ```python
 import asyncio
 import p40_flowbase as fb
-from p40_weather.objects import WeatherCityNarrativeAgentDB, WeatherVersions
+from p40_weather.objects import AnthropicCityNarrativeAgentDB, WeatherVersions
 fb.DataObject.set_local_data("/tmp/p40_weather")
-asyncio.run(WeatherCityNarrativeAgentDB(WeatherVersions.MAIN).make(replace=True))
+asyncio.run(AnthropicCityNarrativeAgentDB(WeatherVersions.MAIN).make(replace=True))
 ```
 
 When calling from a event loop (inside an async function, Jupyter await cell, Dagster asset), use `amake()`:
 
 ```python
-await WeatherSummaryTable(WeatherVersions.MAIN).amake(replace=True)
-await WeatherCityNarrativeAgentDB(WeatherVersions.MAIN).amake(replace=True)
+await OpenMeteoCitySummaryTable(WeatherVersions.MAIN).amake(replace=True)
+await AnthropicCityNarrativeAgentDB(WeatherVersions.MAIN).amake(replace=True)
 ```
 
 Every object exposes the same `make()` / `convert()` / `delete()`.
@@ -131,24 +131,24 @@ Every object exposes the same `make()` / `convert()` / `delete()`.
 Track progress with:
 
 ```sh
-tail -f $LOCAL_DATA/weather_city_narrative_agent_db-main/weather_city_narrative_agent_db-main.meta.log
+tail -f $LOCAL_DATA/anthropic_city_narrative_agent_db-main/anthropic_city_narrative_agent_db-main.meta.log
 ```
 
 ## Pipeline overview
 
 | Class | Output | Notes |
 |---|---|---|
-| `WeatherContextFiles(fb.ManualComposite)` | `.files` of hand-uploaded project context as dated `<YYMMDD>_<title>/` entries | Standalone root asset; materializes an empty `.files` you populate by hand. `delete`/`replace`/`convert` are disabled and the Dagster asset is tagged `rebuildable=false`. |
-| `WeatherVersionConfig(fb.Table)` | Two-column `(key, value)` parquet of the active `WeatherVersion`'s fields | Snapshot of version metadata at run time; auto-tracks new fields via `dataclasses.asdict`. |
-| `WeatherInputCities(fb.Table)` | `(name, latitude_deg, longitude_deg)` parquet | Reads `resources/versions/weather_versions/cities-<id>.tsv`. Lifting the catalog out of `WeatherVersions` keeps the enum import-time pure. |
-| `WeatherHTTPDB(fb.HTTPDB)` | SQLite of HTTP requests + custom `WeatherHTTPRequestGroup` (per-run audit) + `WeatherHTTPRequestExtra` (per-request city metadata) | One row per `(version, city)`; cities read from `WeatherInputCities(version).sql()` |
-| `WeatherResponseFiles(fb.Composite)` | One `<city>.json` per successful response | City name read from the join `HTTPRequest JOIN WeatherHTTPRequestExtra`, no URL parsing |
-| `WeatherHourlyTable(fb.Table)` | Flat parquet `(city, ts_utc, temp_c, precip_mm)` | Python `_make` parses the JSON arrays |
-| `WeatherSummaryTable(fb.Table)` | Per-city min/mean/max temp + total precip | **`.sql.jinja` template** at `resources/templates/tables/weather_summary_table.sql.jinja` |
-| `WeatherCityNarrativeAgentDB(fb.AgentDB)` | One LLM task per city; one-sentence narrative | **`.md.jinja` prompt template** at `resources/templates/prompts/weather_city_narrative_agent_db.md.jinja`; `Models.CLAUDE_SONNET_4_6`; custom `WeatherAgentTaskGroup` / `WeatherAgentTaskExtra` |
-| `WeatherCityNarrativeTable(fb.TableFromDB)` | `(city, narrative, model_id, cost_usd)` parquet | Joined from `AgentTask JOIN WeatherAgentTaskExtra` |
-| `WeatherFigure(fb.Figure)` | Bar chart of mean temps | matplotlib pickle |
-| `WeatherDoc(fb.Document)` | Markdown with summary table + LLM narratives + embedded SVG | Auto-converts the figure to SVG before embedding |
+| `ManualContextFiles(fb.ManualComposite)` | `.files` of hand-uploaded project context as dated `<YYMMDD>_<title>/` entries | Standalone root asset; materializes an empty `.files` you populate by hand. `delete`/`replace`/`convert` are disabled and the Dagster asset is tagged `rebuildable=false`. |
+| `PipelineVersionConfigTable(fb.Table)` | Two-column `(key, value)` parquet of the active `WeatherVersion`'s fields | Snapshot of version metadata at run time; auto-tracks new fields via `dataclasses.asdict`. |
+| `ManualInputCitiesTable(fb.Table)` | `(name, latitude_deg, longitude_deg)` parquet | Reads `resources/versions/weather_versions/cities-<id>.tsv`. Lifting the catalog out of `WeatherVersions` keeps the enum import-time pure. |
+| `OpenMeteoForecastHTTPDB(fb.HTTPDB)` | SQLite of HTTP requests + custom `OpenMeteoHTTPRequestGroup` (per-run audit) + `OpenMeteoHTTPRequestExtra` (per-request city metadata) | One row per `(version, city)`; cities read from `ManualInputCitiesTable(version).sql()` |
+| `OpenMeteoForecastResponseFiles(fb.Composite)` | One `<city>.json` per successful response | City name read from the join `HTTPRequest JOIN OpenMeteoHTTPRequestExtra`, no URL parsing |
+| `OpenMeteoCityHourlyTable(fb.Table)` | Flat parquet `(city, ts_utc, temp_c, precip_mm)` | Python `_make` parses the JSON arrays |
+| `OpenMeteoCitySummaryTable(fb.Table)` | Per-city min/mean/max temp + total precip | **`.sql.jinja` template** at `resources/templates/tables/open_meteo_city_summary_table.sql.jinja` |
+| `AnthropicCityNarrativeAgentDB(fb.AgentDB)` | One LLM task per city; one-sentence narrative | **`.md.jinja` prompt template** at `resources/templates/prompts/anthropic_city_narrative_agent_db.md.jinja`; `Models.CLAUDE_SONNET_4_6`; custom `AnthropicAgentTaskGroup` / `AnthropicAgentTaskExtra` |
+| `AnthropicCityNarrativeTable(fb.TableFromDB)` | `(city, narrative, model_id, cost_usd)` parquet | Joined from `AgentTask JOIN AnthropicAgentTaskExtra` |
+| `OpenMeteoCityTempMeanFigure(fb.Figure)` | Bar chart of mean temps | matplotlib pickle |
+| `WeatherReportDoc(fb.Document)` | Markdown with summary table + LLM narratives + embedded SVG | Auto-converts the figure to SVG before embedding |
 
 Dagster DAG (from `definitions.py`):
 
@@ -163,14 +163,14 @@ cities → http_db → files → hourly → summary ─┬→ narrative_db → n
 
 ## Manual context files (`ManualComposite`)
 
-`WeatherContextFiles` is the canonical use of `fb.ManualComposite`: a place to put manually created files inside a purpose-built module, primarily the project description and context for the whole module.
+`ManualContextFiles` is the canonical use of `fb.ManualComposite`: a place to put manually created files inside a purpose-built module, primarily the project description and context for the whole module.
 
 `make` only ensures an empty `.files` directory; nothing in the repo regenerates it. You populate it **by hand**, out of band: copy files in, or pull them from object storage. The object materializes empty and waits for content.
 
 Organize `.files` as an **append-only series of dated entries**, one subfolder per update:
 
 ```
-weather_context_files-main.files/
+manual_context_files-main.files/
 ├── 260614_project_description/
 │   ├── overview.md
 │   └── data_sources.md
@@ -178,10 +178,10 @@ weather_context_files-main.files/
     └── status.md
 ```
 
-Each update (a project description, a status report, a data-room drop, a design note) gets its own `<YYMMDD>_<title>/` subfolder; older entries are never rewritten, so `.files` reads as a chronological log of the module's context. Drop a new dated entry in whenever the context changes. The materialized object is the source of truth, so the content lives in your data root (`$LOCAL_DATA/weather_context_files-<version>/...`), not in the repo:
+Each update (a project description, a status report, a data-room drop, a design note) gets its own `<YYMMDD>_<title>/` subfolder; older entries are never rewritten, so `.files` reads as a chronological log of the module's context. Drop a new dated entry in whenever the context changes. The materialized object is the source of truth, so the content lives in your data root (`$LOCAL_DATA/manual_context_files-<version>/...`), not in the repo:
 
 ```sh
-ENTRY="$LOCAL_DATA/weather_context_files-main/weather_context_files-main.files/260614_project_description"
+ENTRY="$LOCAL_DATA/manual_context_files-main/manual_context_files-main.files/260614_project_description"
 mkdir -p "$ENTRY"
 cp project_description.md "$ENTRY/overview.md"
 ```
@@ -192,19 +192,19 @@ The point of `ManualComposite` over a plain `Composite` is that hand-curated mat
 - `make(replace=True)` is a no-op, so a global Dagster replace run cannot wipe the files.
 - `convert()` is blocked, so `.files` stays the only format. A `.zip` snapshot would drift, since the object is never rebuilt to refresh it.
 
-In the Dagster UI the asset is tagged `rebuildable=false` (plus a `lifecycle` metadata note), so it is visibly skipped by a global replace/convert run. Subclass `fb.ManualComposite` exactly like any other object and add `@fb.asset(...)`; see `WeatherContextFiles` in `objects/weather.py`.
+In the Dagster UI the asset is tagged `rebuildable=false` (plus a `lifecycle` metadata note), so it is visibly skipped by a global replace/convert run. Subclass `fb.ManualComposite` exactly like any other object and add `@fb.asset(...)`; see `ManualContextFiles` in `objects/context_files.py`.
 
 ## Post-make checks
 
-Each subclass declares a tuple of `fb.Check` objects in a `checks` ClassVar; the framework runs them after `make()` succeeds and raises `fb.CheckFailedError` (turning the Dagster asset red) on the first failure. A 100%-failed `WeatherHTTPDB`, a 0-row `WeatherSummaryTable`, or an empty-files `WeatherResponseFiles` no longer slip through silently.
+Each subclass declares a tuple of `fb.Check` objects in a `checks` ClassVar; the framework runs them after `make()` succeeds and raises `fb.CheckFailedError` (turning the Dagster asset red) on the first failure. A 100%-failed `OpenMeteoForecastHTTPDB`, a 0-row `OpenMeteoCitySummaryTable`, or an empty-files `OpenMeteoForecastResponseFiles` no longer slip through silently.
 
 ```python
 from p40_flowbase import checks as ck
 
-class WeatherSummaryTable(fb.Table):
+class OpenMeteoCitySummaryTable(fb.Table):
     checks = (ck.MinRows(1), ck.NoNulls("city", "temp_mean_c"), ck.Unique("city"))
 
-class WeatherHTTPDB(fb.HTTPDB):
+class OpenMeteoForecastHTTPDB(fb.HTTPDB):
     checks = (ck.MinRequests(1), ck.MaxFailureRate(frac=0.0))
 ```
 
@@ -221,7 +221,7 @@ Two versions are wired into `WeatherVersions`:
 
 Both share the same city catalog today; the cities live in TSVs at `resources/versions/weather_versions/cities-<id>.tsv`. To diverge them, edit one TSV; no Python code changes.
 
-To add a new version: append a `WeatherVersions.<NEW>` enum member with `WeatherVersion(id="<x>", name="<x>", description="...", forecast_days=<n>)`, drop a `cities-<x>.tsv` next to the others (the per-version catalog `WeatherInputCities` reads), and Dagster picks up the new partition on next reload.
+To add a new version: append a `WeatherVersions.<NEW>` enum member with `WeatherVersion(id="<x>", name="<x>", description="...", forecast_days=<n>)`, drop a `cities-<x>.tsv` next to the others (the per-version catalog `ManualInputCitiesTable` reads), and Dagster picks up the new partition on next reload.
 
 ## Schema metadata
 

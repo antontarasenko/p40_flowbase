@@ -6,8 +6,8 @@ required. See https://open-meteo.com/en/docs for the schema.
 
 Cities are not defined here anymore; each version's catalog lives in
 ``resources/versions/weather_versions/cities-<id>.tsv`` and is
-materialized by ``WeatherInputCities`` (see
-``p40_weather.objects.weather``).
+materialized by ``ManualInputCitiesTable`` (see
+``p40_weather.objects.open_meteo_forecast_http_db``).
 """
 
 from urllib.parse import urlencode

@@ -2,6 +2,7 @@
 
 ## Branch `main`
 
+- examples/p40_weather: One data object per module; names follow `<provider>_<content>_<kind>` pattern
 - contrib: Remove `env_vars_required`, add `.local.envrc` to `.envrc`
 
 ## 0.8.0 (2026-07-06)

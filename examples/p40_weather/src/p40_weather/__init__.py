@@ -2,7 +2,7 @@
 
 Builds an eight-stage pipeline against the Open-Meteo API. See
 ``p40_weather.definitions`` for the Dagster wiring and
-``p40_weather.objects.weather`` for the DataObject subclasses.
+``p40_weather.objects`` for the DataObject subclasses, one per module.
 """
 
 from p40_weather._version import __version__
