@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.8.1 (2026-09-05)
+
 - schemas: Add reference schemas: `SchemaBase`, `ReferenceBase` with quote verification, `MetricObservation`, `InstantObservation`, `PeriodObservation`, `Observation`
 - checks: Add `QuotesVerified`, re-proving every quote byte-identical against its stored source
 - examples/p40_weather: One data object per module; names follow `<provider>_<content>_<kind>` pattern
