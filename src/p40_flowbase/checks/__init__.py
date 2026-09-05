@@ -33,6 +33,7 @@ async check to a sync-only object raises ``NotImplementedError`` at
 first run.
 """
 
+from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -405,6 +406,98 @@ class MaxFailureRate(BaseCheck):
             )
 
 
+# Reference-schema checks
+
+
+class QuotesVerified(BaseCheck):
+    """Re-prove byte-identity of every quote against its stored source.
+
+    Structural verification for Tables whose ``row_schema`` derives from
+    ``schemas.ReferenceBase``: instead of trusting the producer's
+    ``quote_checked_at_utc`` stamp, the check re-reads each row's
+    verification artifact via ``resolver`` and requires ``quote`` to be
+    a byte-identical substring of it (and, when ``quote_offset_char`` is
+    set, to sit exactly at that offset). A quote that resolves but does
+    not match always fails, with a diagnostic hint when it would match
+    after NFKC/whitespace normalization (a different rendering: the
+    producer should re-extract from the stored artifact).
+
+    :param resolver: Maps ``(obj, source_url, source_transcript)`` to
+        the verification artifact text: the raw stored body when
+        ``source_transcript`` is ``None`` (an ``HTTPDB``
+        ``response_body_text``, a Composite file), else the referenced
+        transcript. ``None`` = source not stored.
+    :param on_missing: Policy for rows whose source is not stored:
+        ``"fail"`` (default) fails on the first missing source;
+        ``"skip"`` verifies only resolvable rows; a float in (0, 1]
+        requires at least that fraction of ALL rows to be verified.
+    """
+
+    def __init__(
+        self,
+        *,
+        resolver: Callable[["DataObject", str, str | None], str | None],
+        on_missing: str | float = "fail",
+    ) -> None:
+        if isinstance(on_missing, str):
+            if on_missing not in ("fail", "skip"):
+                raise ValueError("on_missing must be 'fail', 'skip', or a fraction")
+        elif not 0 < on_missing <= 1:
+            raise ValueError("on_missing fraction must be in (0, 1]")
+        self.resolver = resolver
+        self.on_missing = on_missing
+        self.name = f"quotes_verified(on_missing={on_missing})"
+
+    @override
+    def run(self, obj: "DataObject") -> None:
+        from p40_flowbase.schemas.observation import verify_quote
+
+        self._require(obj, Table)
+        rows = obj.sql(  # type: ignore[attr-defined]
+            "SELECT source_url, source_transcript, quote, quote_offset_char FROM t"
+        ).fetchall()
+        artifacts: dict[tuple[str, str | None], str | None] = {}
+        missing_cnt = 0
+        for url, transcript, quote, offset in rows:
+            key = (url, transcript)
+            if key not in artifacts:
+                artifacts[key] = self.resolver(obj, url, transcript)
+            artifact = artifacts[key]
+            if artifact is None:
+                if self.on_missing == "fail":
+                    raise CheckFailedError(
+                        f"{self.name}: no stored source for {url!r} "
+                        f"(transcript={transcript!r})"
+                    )
+                missing_cnt += 1
+                continue
+            if quote not in artifact:
+                tier = verify_quote(quote=quote, source_text=artifact)
+                hint = (
+                    " (matches after normalization: the quote came from a "
+                    "different rendering; re-extract it from the stored "
+                    "artifact)"
+                    if tier == "normalized"
+                    else ""
+                )
+                raise CheckFailedError(
+                    f"{self.name}: quote is not a byte-identical substring "
+                    f"of the stored source {url!r}{hint}: {quote[:120]!r}"
+                )
+            if offset is not None and artifact[offset : offset + len(quote)] != quote:
+                raise CheckFailedError(
+                    f"{self.name}: quote matches the source but not at "
+                    f"quote_offset_char={offset} for {url!r}: {quote[:120]!r}"
+                )
+        if isinstance(self.on_missing, float) and rows:
+            verified_frac = (len(rows) - missing_cnt) / len(rows)
+            if verified_frac < self.on_missing:
+                raise CheckFailedError(
+                    f"{self.name}: only {verified_frac:.2%} of rows have a "
+                    f"stored source; required {self.on_missing:.2%}"
+                )
+
+
 # Public alias: users write ``checks: tuple[fb.Check, ...] = (...)``
 Check = BaseCheck
 
@@ -422,6 +515,7 @@ __all__ = [
     "NoEmptyFiles",
     "NoNulls",
     "NoUnindexedFiles",
+    "QuotesVerified",
     "SchemaMatches",
     "Unique",
 ]

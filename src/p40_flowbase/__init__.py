@@ -107,7 +107,10 @@ License: MIT. Copyright (c) 2025 Anton Tarasenko.
 
 from importlib.metadata import version
 
-from p40_flowbase import checks
+from p40_flowbase import (
+    checks,
+    schemas,
+)
 from p40_flowbase.agents import (
     AgentDB,
     AgentFile,
@@ -270,4 +273,5 @@ __all__ = [
     "print_dag",
     "render_jinja_template",
     "safe_path_component",
+    "schemas",
 ]

@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- schemas: Add reference schemas: `SchemaBase`, `ReferenceBase` with quote verification, `MetricObservation`, `InstantObservation`, `PeriodObservation`, `Observation`
+- checks: Add `QuotesVerified`, re-proving every quote byte-identical against its stored source
 - examples/p40_weather: One data object per module; names follow `<provider>_<content>_<kind>` pattern
 - contrib: Remove `env_vars_required`, add `.local.envrc` to `.envrc`
 
