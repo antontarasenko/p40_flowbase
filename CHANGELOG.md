@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.8.2 (2026-09-26)
+
 - core: Add `links` on `DataObject` and `DataObjectVersion`, p40 `<root>/<handle>` addresses written as the `links` root key of `meta.json`
 - Makefile: Read the PyPI token from `op-pypi-token` at upload
 
