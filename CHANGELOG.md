@@ -2,6 +2,9 @@
 
 ## Branch `main`
 
+- core: Add `links` on `DataObject` and `DataObjectVersion`, p40 `<root>/<handle>` addresses written as the `links` root key of `meta.json`
+- Makefile: Read the PyPI token from `op-pypi-token` at upload
+
 ## 0.8.1 (2026-09-05)
 
 - schemas: Add reference schemas: `SchemaBase`, `ReferenceBase` with quote verification, `MetricObservation`, `InstantObservation`, `PeriodObservation`, `Observation`

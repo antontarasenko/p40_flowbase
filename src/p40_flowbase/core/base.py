@@ -26,6 +26,7 @@ import asyncio
 import importlib.metadata
 import json
 import pathlib
+import re
 import shutil
 import time
 from abc import (
@@ -33,7 +34,10 @@ from abc import (
     abstractmethod,
 )
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import (
+    dataclass,
+    field,
+)
 from datetime import (
     UTC,
     datetime,
@@ -58,6 +62,19 @@ from p40_flowbase.logging import (
     object_log_context,
 )
 
+#: A p40 link address, ``<root>/<handle>``: the root is a p40 docs kind or one of
+#: the planes ``data``, ``code``, ``cloud``, ``inbox``, ``users``. Flowbase checks the
+#: shape only; resolving a link needs the project's storage and is ``p40 check``'s job.
+LINK_ADDRESS_RE = re.compile(r"^[0-9a-z][0-9a-z_]*/[0-9A-Za-z][0-9A-Za-z._@-]*$")
+
+
+def check_links(links: tuple[str, ...], where: str) -> None:
+    """Raise ``ValueError`` on a link that is not a ``<root>/<handle>`` address."""
+    for link in links:
+        if not LINK_ADDRESS_RE.match(link):
+            message = f"{where}: link {link!r} is not a p40 <root>/<handle> address"
+            raise ValueError(message)
+
 
 @dataclass(frozen=True)
 class DataObjectVersion:
@@ -66,11 +83,18 @@ class DataObjectVersion:
     :ivar id: Short identifier for the version (e.g., "main", "v1", "test").
     :ivar name: Human-readable name for the version.
     :ivar description: Detailed description of what this version contains.
+    :ivar links: p40 addresses this version points at, such as the inbox drop it
+        was made from, ``<root>/<handle>``; written to ``meta.json`` after the
+        class links.
     """
 
     id: str
     name: str
     description: str
+    links: tuple[str, ...] = field(default=(), kw_only=True)
+
+    def __post_init__(self) -> None:
+        check_links(self.links, where=f"version {self.id}")
 
 
 def resolve_anchor_package(obj: "DataObject") -> str:
@@ -205,12 +229,20 @@ class DataObject(ABC):
     #: Post-make checks; iterated by ``make`` / ``amake`` after the
     #: ``make_summary`` log line. See ``p40_flowbase.checks`` for built-ins.
     checks: ClassVar[tuple[BaseCheck, ...]] = ()
+    #: p40 addresses this object points at, ``<root>/<handle>``: its subproject
+    #: (``projects/sp``), its sources, the docs it feeds. Shape-checked when the
+    #: class is defined, written to ``meta.json`` as ``links``, resolved by ``p40 check``.
+    links: ClassVar[tuple[str, ...]] = ()
     #: Selects the ``<readme_kind>.readme.html.jinja`` template.
     readme_kind: ClassVar[str] = "base"
     version: Enum
 
     # Must be set by project config
     _local_data: ClassVar[str | None] = None
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        check_links(cls.links, where=f"{cls.__qualname__}.links")
 
     def __init__(self, version: Enum):
         """Initialize a data object with a specific version.
@@ -309,12 +341,17 @@ class DataObject(ABC):
         """
         self._write_readme()
 
+    def all_links(self) -> list[str]:
+        """Class links then the version's, deduplicated, in declaration order."""
+        return list(dict.fromkeys((*self.links, *self.version.value.links)))
+
     def _meta_context(self) -> dict[str, Any]:
         """Definition-derived metadata; subclasses extend via ``super()``.
 
         Consumer-facing, Dagster-independent provenance: identity,
-        version, producing distribution, and direct upstream ids (from
-        ``asset_deps`` when present). The runtime facts (``made_at_utc``,
+        version, producing distribution, direct upstream ids (from
+        ``asset_deps`` when present), and the p40 links of the class and
+        the version. The runtime facts (``made_at_utc``,
         content ``bytes``/``sha256``) are added by :meth:`_write_meta`.
         """
         v = self.version.value
@@ -333,6 +370,7 @@ class DataObject(ABC):
                 "class": f"{cls.__module__}.{cls.__qualname__}",
             },
             "lineage": {"deps": [dep.id for dep in deps]},
+            "links": self.all_links(),
         }
 
     def _meta_optional(self) -> dict[str, Any]:

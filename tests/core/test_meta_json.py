@@ -70,6 +70,26 @@ class _Blob(DataObject):
         self.path_to_format(self.make_format).write_bytes(b"\x89PNG blob")
 
 
+class _LinkedVersion(Enum):
+    Q3 = DataObjectVersion(
+        id="q3", name="Q3", description="Third quarter", links=("inbox/260926_sp_bank",)
+    )
+
+
+class _Linked(Table):
+    id: ClassVar[str] = "meta_linked_table"
+    description: ClassVar[str] = "Linked fixture"
+    supported_versions: ClassVar[tuple[Enum, ...]] = (_LinkedVersion.Q3,)
+    row_schema: ClassVar[type[pyd.BaseModel]] = _UpstreamRow
+    links: ClassVar[tuple[str, ...]] = (
+        "projects/sp", "users/anton", "inbox/260926_sp_bank",
+    )
+
+    @override
+    def _make(self) -> None:
+        self.save_arrow(pa.table({"x": [1]}))
+
+
 def _meta(obj: DataObject) -> dict[str, Any]:
     obj.make(replace=True)
     return json.loads(obj.path_to_meta.read_text())
@@ -125,16 +145,34 @@ class TestMetaJson:
         meta = _meta(_MetaTable(_Version.MAIN))
         assert set(meta) == {
             "object_id", "object_stem", "description", "version",
-            "master_format", "producer", "lineage", "made_at_utc",
+            "master_format", "producer", "lineage", "links", "made_at_utc",
             "content", "optional",
         }
+
+    def test_links_default_empty(self):
+        assert _meta(_MetaTable(_Version.MAIN))["links"] == []
+
+    def test_links_class_then_version_deduplicated(self):
+        assert _meta(_Linked(_LinkedVersion.Q3))["links"] == [
+            "projects/sp", "users/anton", "inbox/260926_sp_bank",
+        ]
+
+    def test_malformed_class_link_rejected_at_definition(self):
+        with pytest.raises(ValueError, match="not a p40"):
+
+            class _Bad(_Blob):  # pyright: ignore[reportUnusedClass]
+                links: ClassVar[tuple[str, ...]] = ("Projects/SP",)
+
+    def test_malformed_version_link_rejected(self):
+        with pytest.raises(ValueError, match="not a p40"):
+            DataObjectVersion(id="x", name="x", description="x", links=("nope",))
 
     def test_non_table_has_same_root_and_empty_optional(self):
         meta = _meta(_Blob(_Version.MAIN))
         # Same uniform root as a Table; class-specific bucket is empty (not absent).
         assert set(meta) == {
             "object_id", "object_stem", "description", "version",
-            "master_format", "producer", "lineage", "made_at_utc",
+            "master_format", "producer", "lineage", "links", "made_at_utc",
             "content", "optional",
         }
         assert set(meta["content"]) == {"bytes", "sha256"}
