@@ -36,7 +36,7 @@ upload: $(WHEEL_PATH)
 	@echo "Checking Python wheel..."
 	python -m twine check $(WHEEL_PATH)
 	@echo "Uploading Python wheel to PyPI..."
-	python -m twine upload $(WHEEL_PATH)
+	TWINE_USERNAME=__token__ TWINE_PASSWORD="$$(op-pypi-token)" python -m twine upload $(WHEEL_PATH)
 	@echo "Uploaded to: https://pypi.org/project/p40-flowbase/$(VERSION)/"
 
 # Ensure wheel exists before upload
