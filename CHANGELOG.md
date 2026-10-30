@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+- contrib: `ruff format` replaces black in the pre-commit routine, the whole tree formatted once; black was never a dependency
+
 ## 0.8.3 (2026-10-30)
 
 - schemas: Add `artifact_sha256` on `ReferenceBase`, the content identity the check resolves by; `source_transcript` documented as the legacy locator and `quote_checked_at_utc` as deprecated

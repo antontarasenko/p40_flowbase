@@ -35,7 +35,7 @@ nix flake update
 Pre-commit routine:
 
 ```
-black src/ tests/
+ruff format src/ tests/
 ruff check src/ tests/
 mypy src/
 pytest
