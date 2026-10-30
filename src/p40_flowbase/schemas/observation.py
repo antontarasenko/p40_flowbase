@@ -403,8 +403,7 @@ class Observation(MetricObservation):
         set_names = [n for n in _VALUE_FIELDS if getattr(self, n) is not None]
         if len(set_names) != 1:
             raise ValueError(
-                f"exactly one of {_VALUE_FIELDS} must be set, "
-                f"got {set_names or 'none'}"
+                f"exactly one of {_VALUE_FIELDS} must be set, got {set_names or 'none'}"
             )
         return self
 

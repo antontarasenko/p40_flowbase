@@ -72,9 +72,7 @@ class TestHTTPResume:
         assert populate_mock.await_count == 0
 
         async with http_db.session_factory() as session:
-            groups = (
-                await session.exec(select(HTTPRequestGroup))
-            ).all()
+            groups = (await session.exec(select(HTTPRequestGroup))).all()
             rows = (await session.exec(select(HTTPRequest))).all()
 
         assert len(groups) == 1
@@ -108,9 +106,7 @@ class TestHTTPResume:
             await http_db.make(retries=0)
 
         async with http_db.session_factory() as session:
-            groups = (
-                await session.exec(select(HTTPRequestGroup))
-            ).all()
+            groups = (await session.exec(select(HTTPRequestGroup))).all()
             rows = (await session.exec(select(HTTPRequest))).all()
 
         assert [g.http_request_group_id for g in groups] == [new_group_id]

@@ -108,13 +108,9 @@ def build_recursive_task_graph(
         previous_step_results: list[Any] = state.get("previous_step_results", [])
         max_retries: int = state.get("max_retries", 1)
 
-        logger.info(
-            f"Lane '{lane_id}': processing step {step_index}"
-        )
+        logger.info(f"Lane '{lane_id}': processing step {step_index}")
 
-        group_id = await populate_step(
-            lane_id, step_index, previous_step_results
-        )
+        group_id = await populate_step(lane_id, step_index, previous_step_results)
 
         if group_id is None:
             logger.info(
@@ -124,7 +120,8 @@ def build_recursive_task_graph(
                 **state,
                 "step_index": step_index + 1,
                 "previous_step_results": [],
-                "all_step_results": state.get("all_step_results", []) + [
+                "all_step_results": state.get("all_step_results", [])
+                + [
                     {"lane_id": lane_id, "step_index": step_index, "results": []},
                 ],
             }
@@ -147,15 +144,15 @@ def build_recursive_task_graph(
         results = await get_wave_results(group_id)
 
         logger.info(
-            f"Lane '{lane_id}': step {step_index} completed "
-            f"with {len(results)} results"
+            f"Lane '{lane_id}': step {step_index} completed with {len(results)} results"
         )
 
         return {
             **state,
             "step_index": step_index + 1,
             "previous_step_results": results,
-            "all_step_results": state.get("all_step_results", []) + [
+            "all_step_results": state.get("all_step_results", [])
+            + [
                 {"lane_id": lane_id, "step_index": step_index, "results": results},
             ],
         }

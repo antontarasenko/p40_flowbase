@@ -41,9 +41,7 @@ class TestAgentRetry:
 
         async with agent_db.session_factory() as session:
             result = await session.exec(
-                select(AgentTask).where(
-                    AgentTask.agent_task_id == original_id
-                )
+                select(AgentTask).where(AgentTask.agent_task_id == original_id)
             )
             old_task = result.one()
 
@@ -101,8 +99,7 @@ class TestAgentRetry:
         async with agent_db.session_factory() as session:
             result = await session.exec(
                 select(AgentTask).where(
-                    AgentTask.agent_task_id
-                    == already_superseded.agent_task_id
+                    AgentTask.agent_task_id == already_superseded.agent_task_id
                 )
             )
             task = result.one()
@@ -134,9 +131,7 @@ class TestAgentRetry:
 
             async with agent_db.session_factory() as session:
                 result = await session.exec(
-                    select(AgentTask).where(
-                        AgentTask.agent_task_id == original_id
-                    )
+                    select(AgentTask).where(AgentTask.agent_task_id == original_id)
                 )
                 old_task = result.one()
             first_superseded_by = old_task.superseded_by_id
@@ -146,9 +141,7 @@ class TestAgentRetry:
 
         async with agent_db.session_factory() as session:
             result = await session.exec(
-                select(AgentTask).where(
-                    AgentTask.agent_task_id == original_id
-                )
+                select(AgentTask).where(AgentTask.agent_task_id == original_id)
             )
             old_task = result.one()
 

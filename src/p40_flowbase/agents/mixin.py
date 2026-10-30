@@ -100,7 +100,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                     .group_by(AgentTask.error_message)
                 )
             ).all()
-        total, cost, turns, dur_ms = (agg or (0, 0.0, 0, 0))
+        total, cost, turns, dur_ms = agg or (0, 0.0, 0, 0)
         failed = sum(int(c or 0) for _, c in error_msgs)
         ok = int(total or 0) - failed
         error_breakdown: Counter[str] = Counter()
@@ -111,9 +111,8 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             "total": int(total or 0),
             "ok": ok,
             "failed": failed,
-            "errors": ",".join(
-                f"{k}:{v}" for k, v in error_breakdown.most_common()
-            ) or "none",
+            "errors": ",".join(f"{k}:{v}" for k, v in error_breakdown.most_common())
+            or "none",
             "cost_usd": f"{float(cost or 0.0):.4f}",
             "turns": int(turns or 0),
             "wall_s": f"{float(dur_ms or 0) / 1000.0:.3f}",
@@ -149,9 +148,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         rate_limit: float = 1.0,
         rate_period: float = 1.0,
     ) -> list[AgentTask]:
-        group_uuid = (
-            uuid.UUID(group_id) if isinstance(group_id, str) else group_id
-        )
+        group_uuid = uuid.UUID(group_id) if isinstance(group_id, str) else group_id
         return await self._execute_pending_agent_tasks(
             rate_limit=rate_limit,
             rate_period=rate_period,
@@ -165,9 +162,7 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         rate_limit: float = 1.0,
         rate_period: float = 1.0,
     ) -> list[AgentTask]:
-        group_uuid = (
-            uuid.UUID(group_id) if isinstance(group_id, str) else group_id
-        )
+        group_uuid = uuid.UUID(group_id) if isinstance(group_id, str) else group_id
         return await self._retry_failed_agent_tasks(
             rate_limit=rate_limit,
             rate_period=rate_period,
@@ -221,10 +216,12 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                     if isinstance(output_format, type) and issubclass(
                         output_format, pyd.BaseModel
                     ):
-                        output_format_json = json.dumps({
-                            "type": "json_schema",
-                            "schema": output_format.model_json_schema(),
-                        })
+                        output_format_json = json.dumps(
+                            {
+                                "type": "json_schema",
+                                "schema": output_format.model_json_schema(),
+                            }
+                        )
                     elif isinstance(output_format, dict):
                         output_format_json = json.dumps(output_format)
                     else:
@@ -366,7 +363,10 @@ class AgentDB(RequestsDBMixin[AgentTask]):
         try:
             json.loads(final_response)
         except (json.JSONDecodeError, ValueError) as ve:
-            return True, f"Response is not valid JSON for required structured output: {ve}"
+            return (
+                True,
+                f"Response is not valid JSON for required structured output: {ve}",
+            )
         return False, None
 
     async def _execute_single_agent_task(
@@ -429,20 +429,34 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                 if hasattr(item, "raw_item"):
                     raw: Any = item.raw_item
                     if hasattr(raw, "role"):
-                        messages.append({
-                            "turn_number": turn_number,
-                            "role": raw.role if hasattr(raw, "role") else "assistant",
-                            "content": json.dumps(raw.model_dump()) if hasattr(raw, "model_dump") else str(raw),
-                        })
+                        messages.append(
+                            {
+                                "turn_number": turn_number,
+                                "role": raw.role
+                                if hasattr(raw, "role")
+                                else "assistant",
+                                "content": json.dumps(raw.model_dump())
+                                if hasattr(raw, "model_dump")
+                                else str(raw),
+                            }
+                        )
 
                 if hasattr(item, "type") and item.type == "tool_call_item":
-                    tool_calls.append({
-                        "turn_number": turn_number,
-                        "tool_name": item.name if hasattr(item, "name") else "unknown",
-                        "tool_input": json.dumps(item.call_args) if hasattr(item, "call_args") else "{}",
-                        "tool_output": item.output if hasattr(item, "output") else None,
-                        "is_error": False,
-                    })
+                    tool_calls.append(
+                        {
+                            "turn_number": turn_number,
+                            "tool_name": item.name
+                            if hasattr(item, "name")
+                            else "unknown",
+                            "tool_input": json.dumps(item.call_args)
+                            if hasattr(item, "call_args")
+                            else "{}",
+                            "tool_output": item.output
+                            if hasattr(item, "output")
+                            else None,
+                            "is_error": False,
+                        }
+                    )
 
                 turn_number += 1
 
@@ -450,7 +464,9 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             await self._store_messages(task.agent_task_id, messages)
 
             final_response = result.final_output
-            is_error, error_message = self._validate_structured_output(task, final_response)
+            is_error, error_message = self._validate_structured_output(
+                task, final_response
+            )
 
             async with self.session_factory() as session:
                 task.final_response = final_response
@@ -531,24 +547,31 @@ class AgentDB(RequestsDBMixin[AgentTask]):
                     if hasattr(message, "content"):
                         for block in message.content:  # pyright: ignore[reportAttributeAccessIssue]
                             if hasattr(block, "name") and hasattr(block, "input"):
-                                tool_calls.append({
-                                    "turn_number": turn_number,
-                                    "tool_name": block.name,  # pyright: ignore[reportAttributeAccessIssue]
-                                    "tool_input": json.dumps(block.input),  # pyright: ignore[reportAttributeAccessIssue]
-                                    "tool_output": None,
-                                    "is_error": False,
-                                })
+                                tool_calls.append(
+                                    {
+                                        "turn_number": turn_number,
+                                        "tool_name": block.name,  # pyright: ignore[reportAttributeAccessIssue]
+                                        "tool_input": json.dumps(block.input),  # pyright: ignore[reportAttributeAccessIssue]
+                                        "tool_output": None,
+                                        "is_error": False,
+                                    }
+                                )
                             elif hasattr(block, "text"):
-                                messages.append({
-                                    "turn_number": turn_number,
-                                    "role": "assistant",
-                                    "content": block.text,  # pyright: ignore[reportAttributeAccessIssue]
-                                })
+                                messages.append(
+                                    {
+                                        "turn_number": turn_number,
+                                        "role": "assistant",
+                                        "content": block.text,  # pyright: ignore[reportAttributeAccessIssue]
+                                    }
+                                )
 
                     if hasattr(message, "role"):
                         turn_number += 1
 
-                    if hasattr(message, "structured_output") and message.structured_output:  # pyright: ignore[reportAttributeAccessIssue]
+                    if (
+                        hasattr(message, "structured_output")
+                        and message.structured_output
+                    ):  # pyright: ignore[reportAttributeAccessIssue]
                         final_response = json.dumps(message.structured_output)  # pyright: ignore[reportAttributeAccessIssue]
                     elif hasattr(message, "result") and message.result:  # pyright: ignore[reportAttributeAccessIssue]
                         final_response = message.result  # pyright: ignore[reportAttributeAccessIssue]
@@ -563,7 +586,9 @@ class AgentDB(RequestsDBMixin[AgentTask]):
             end_time = datetime.now(UTC)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-            is_error, error_message = self._validate_structured_output(task, final_response)
+            is_error, error_message = self._validate_structured_output(
+                task, final_response
+            )
 
             async with self.session_factory() as session:
                 task.final_response = final_response

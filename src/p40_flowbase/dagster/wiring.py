@@ -77,6 +77,7 @@ class DagsterAssetWiring:
         ``module_name`` or a sub-module of it."""
         prefix = module_name + "."
         return [
-            c for c in cls._registry
+            c
+            for c in cls._registry
             if c.__module__ == module_name or c.__module__.startswith(prefix)
         ]

@@ -53,11 +53,13 @@ class _LogTable(Table):
     @override
     def _make(self) -> None:
         self.save_arrow(
-            pa.Table.from_pylist([
-                {"n": 1, "name": "a"},
-                {"n": 2, "name": "b"},
-                {"n": 3, "name": "c"},
-            ])
+            pa.Table.from_pylist(
+                [
+                    {"n": 1, "name": "a"},
+                    {"n": 2, "name": "b"},
+                    {"n": 3, "name": "c"},
+                ]
+            )
         )
 
 
@@ -197,5 +199,3 @@ async def test_concurrent_make_isolates_per_object_logs(test_local_data):
     # ...and not the other's
     assert b.object_stem not in log_a
     assert a.object_stem not in log_b
-
-

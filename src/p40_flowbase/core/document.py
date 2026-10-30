@@ -103,10 +103,9 @@ class Document(DataObject, DagsterAssetWiring):
         try:
             anchor_pkg = resolve_anchor_package(self)
             template_root = importlib.resources.files(anchor_pkg)
-            template_content = (
-                template_root.joinpath(self.template_subpath, template_filename)
-                .read_text()
-            )
+            template_content = template_root.joinpath(
+                self.template_subpath, template_filename
+            ).read_text()
 
             template_path = temp_dir / template_filename
             template_path.write_text(template_content)

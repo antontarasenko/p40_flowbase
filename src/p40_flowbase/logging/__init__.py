@@ -78,9 +78,7 @@ def object_log_context(
     local_dir.mkdir(parents=True, exist_ok=True)
     log_path = local_dir / f"{object_stem}.meta.log"
     handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     handler.addFilter(_ObjectFilter(object_stem))
     logger.addHandler(handler)
     logger.info(f"=== begin {phase} | object={object_stem} ===")

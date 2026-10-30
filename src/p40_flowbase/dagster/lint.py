@@ -138,9 +138,7 @@ def lint_asset_deps(cls: type[DataObject]) -> AssetDepsLintResult:
     :param cls: ``DataObject`` subclass to check.
     :returns: Diff record. Use ``.is_clean`` for a boolean gate.
     """
-    declared: tuple[type[DataObject], ...] = tuple(
-        getattr(cls, "asset_deps", ()) or ()
-    )
+    declared: tuple[type[DataObject], ...] = tuple(getattr(cls, "asset_deps", ()) or ())
     referenced = scan_make_for_data_object_refs(cls)
     declared_set: set[type[DataObject]] = set(declared)
     referenced_set: set[type[DataObject]] = set(referenced)

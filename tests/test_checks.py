@@ -48,10 +48,14 @@ class _T(fb.Table):
 
     @override
     def _make(self) -> None:
-        self.save_arrow(pa.Table.from_pylist([
-            {"city": "A", "n": 1},
-            {"city": "B", "n": 2},
-        ]))
+        self.save_arrow(
+            pa.Table.from_pylist(
+                [
+                    {"city": "A", "n": 1},
+                    {"city": "B", "n": 2},
+                ]
+            )
+        )
 
 
 class _TWithNulls(fb.Table):
@@ -64,10 +68,14 @@ class _TWithNulls(fb.Table):
     def _make(self) -> None:
         # PyArrow accepts None per column even when Pydantic field is non-optional;
         # the schema check passes because pa.string() accepts nulls.
-        self.save_arrow(pa.Table.from_pylist([
-            {"city": "A", "n": 1},
-            {"city": None, "n": 2},
-        ]))
+        self.save_arrow(
+            pa.Table.from_pylist(
+                [
+                    {"city": "A", "n": 1},
+                    {"city": None, "n": 2},
+                ]
+            )
+        )
 
 
 class _TDup(fb.Table):
@@ -78,10 +86,14 @@ class _TDup(fb.Table):
 
     @override
     def _make(self) -> None:
-        self.save_arrow(pa.Table.from_pylist([
-            {"city": "A", "n": 1},
-            {"city": "A", "n": 2},
-        ]))
+        self.save_arrow(
+            pa.Table.from_pylist(
+                [
+                    {"city": "A", "n": 1},
+                    {"city": "A", "n": 2},
+                ]
+            )
+        )
 
 
 # ----- Composite fixtures --------------------------------------------------
@@ -138,7 +150,9 @@ class _HTTPDB(fb.HTTPDB):
     supported_versions: ClassVar[tuple[Enum, ...]] = (_V.V1,)
     tables: ClassVar[list[Any]] = [fb.HTTPRequest]
 
-    async def _populate_http_requests(self) -> uuid.UUID:  # pragma: no cover  # stub for the lifecycle test
+    async def _populate_http_requests(
+        self,
+    ) -> uuid.UUID:  # pragma: no cover  # stub for the lifecycle test
         return uuid.uuid4()
 
 
@@ -146,11 +160,13 @@ async def _seed_http(db: _HTTPDB, statuses: list[int | None]) -> None:
     """Insert one HTTPRequest row per ``statuses`` entry."""
     async with db.session_factory() as session:
         for status in statuses:
-            session.add(HTTPRequest(
-                request_url="http://example.invalid",
-                request_method="GET",
-                response_status=status,
-            ))
+            session.add(
+                HTTPRequest(
+                    request_url="http://example.invalid",
+                    request_method="GET",
+                    response_status=status,
+                )
+            )
         await session.commit()
 
 

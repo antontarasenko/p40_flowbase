@@ -11,6 +11,7 @@ Recommended import, mirroring ``from p40_flowbase import checks as ck``::
 
     from p40_flowbase import schemas as sc
 
+
     class QuarterlyRevenue(sc.PeriodObservation):
         revenue_gaap_b_usd: float
 

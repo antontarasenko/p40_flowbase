@@ -50,25 +50,29 @@ if TYPE_CHECKING:
 #: Override keys for ``assets_from_classes(overrides=...)`` / ``print_dag(...)``:
 #: user-facing ``@fb.asset(...)`` parameter names that ``_wiring_for`` maps
 #: to the underlying ``asset_*`` ``ClassVar`` storage names.
-_OVERRIDE_KEYS: frozenset[str] = frozenset({
-    "deps",
-    "group",
-    "convert_formats",
-    "retries",
-    "convert",
-    "kwargs",
-})
+_OVERRIDE_KEYS: frozenset[str] = frozenset(
+    {
+        "deps",
+        "group",
+        "convert_formats",
+        "retries",
+        "convert",
+        "kwargs",
+    }
+)
 
 #: ``dg.asset(...)`` keyword arguments that ``_build_asset(...)`` already
 #: manages internally. Forbidden inside the ``**dagster_kwargs`` escape
 #: hatch and inside the ``asset_kwargs`` ``ClassVar``.
-_RESERVED_DG_ASSET_KWARGS: frozenset[str] = frozenset({
-    "name",
-    "partitions_def",
-    "deps",
-    "group_name",
-    "required_resource_keys",
-})
+_RESERVED_DG_ASSET_KWARGS: frozenset[str] = frozenset(
+    {
+        "name",
+        "partitions_def",
+        "deps",
+        "group_name",
+        "required_resource_keys",
+    }
+)
 
 #: Definition-time tag + metadata stamped onto any asset whose class sets
 #: ``asset_rebuildable = False`` (e.g. ``ManualComposite``): flags in the UI
@@ -93,9 +97,7 @@ def partitions_from_versions(
     :returns: ``StaticPartitionsDefinition`` with partition keys
         derived from version IDs.
     """
-    return dg.StaticPartitionsDefinition([
-        v.value.id for v in versions
-    ])
+    return dg.StaticPartitionsDefinition([v.value.id for v in versions])
 
 
 def get_version_from_partition(
@@ -510,19 +512,21 @@ def print_dag(
     ]
     for cls in ordered:
         w = wiring[cls]
-        deps_str = ", ".join(
-            getattr(d, "id", d.__qualname__) for d in graph[cls]
-        ) or "-"
+        deps_str = (
+            ", ".join(getattr(d, "id", d.__qualname__) for d in graph[cls]) or "-"
+        )
         group_str = w["group"] or "-"
         fmts_str = ", ".join(str(f) for f in w["convert_formats"]) or "-"
         kwargs_str = ", ".join(sorted(w["kwargs"])) or "-"
-        rows.append((
-            getattr(cls, "id", cls.__qualname__),
-            deps_str,
-            group_str,
-            fmts_str,
-            kwargs_str,
-        ))
+        rows.append(
+            (
+                getattr(cls, "id", cls.__qualname__),
+                deps_str,
+                group_str,
+                fmts_str,
+                kwargs_str,
+            )
+        )
 
     widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
     lines = [

@@ -168,20 +168,24 @@ def test_arrow_schema_from_pydantic_unsupported_type_raises():
 
 
 def test_validate_passes_on_exact_match():
-    table = pa.Table.from_pylist([
-        {"widget_id": 1, "name": "a", "value": 10},
-        {"widget_id": 2, "name": "b", "value": 20},
-    ])
+    table = pa.Table.from_pylist(
+        [
+            {"widget_id": 1, "name": "a", "value": 10},
+            {"widget_id": 2, "name": "b", "value": 20},
+        ]
+    )
     validate_arrow_against_pydantic(arrow_table=table, model=_SampleWidgetRow)
 
 
 def test_validate_passes_on_int_class_compatibility():
     """int32 in Arrow should validate against Python `int` (int64 expected)."""
-    schema = pa.schema([
-        pa.field("widget_id", pa.int32()),
-        pa.field("name", pa.string()),
-        pa.field("value", pa.int32()),
-    ])
+    schema = pa.schema(
+        [
+            pa.field("widget_id", pa.int32()),
+            pa.field("name", pa.string()),
+            pa.field("value", pa.int32()),
+        ]
+    )
     table = pa.Table.from_pydict(
         {"widget_id": [1], "name": ["a"], "value": [10]},
         schema=schema,
@@ -193,7 +197,8 @@ def test_validate_reports_all_diffs():
     table = pa.Table.from_pylist([{"widget_id": 1, "extra_col": "x"}])
     with pytest.raises(ValueError, match="does not match Pydantic schema") as exc_info:
         validate_arrow_against_pydantic(
-            arrow_table=table, model=_SampleWidgetRow,
+            arrow_table=table,
+            model=_SampleWidgetRow,
         )
     msg = str(exc_info.value)
     assert "missing column 'name'" in msg
@@ -202,14 +207,17 @@ def test_validate_reports_all_diffs():
 
 
 def test_validate_reports_type_mismatch():
-    table = pa.Table.from_pydict({
-        "widget_id": pa.array([1], type=pa.int64()),
-        "name": pa.array(["a"], type=pa.string()),
-        "value": pa.array([1.5], type=pa.float64()),  # expected int
-    })
+    table = pa.Table.from_pydict(
+        {
+            "widget_id": pa.array([1], type=pa.int64()),
+            "name": pa.array(["a"], type=pa.string()),
+            "value": pa.array([1.5], type=pa.float64()),  # expected int
+        }
+    )
     with pytest.raises(ValueError, match="column 'value'"):
         validate_arrow_against_pydantic(
-            arrow_table=table, model=_SampleWidgetRow,
+            arrow_table=table,
+            model=_SampleWidgetRow,
         )
 
 
@@ -257,9 +265,11 @@ def test_default_make_path_writes_parquet(test_local_data):
 def test_save_arrow_validates_and_writes(test_local_data):
     table = _SampleWidgetsTable(_V.V1)
     table.local_dir.mkdir(parents=True, exist_ok=True)
-    arrow = pa.Table.from_pylist([
-        {"widget_id": 1, "name": "a", "value": 10},
-    ])
+    arrow = pa.Table.from_pylist(
+        [
+            {"widget_id": 1, "name": "a", "value": 10},
+        ]
+    )
     table.save_arrow(arrow)
     assert table.path_to_format(TableFormat.PARQUET).exists()
 
@@ -280,5 +290,3 @@ def test_save_arrow_validate_false_skips_check(test_local_data):
     bad = pa.Table.from_pylist([{"widget_id": 1}])
     table.save_arrow(bad, validate=False)
     assert table.path_to_format(TableFormat.PARQUET).exists()
-
-

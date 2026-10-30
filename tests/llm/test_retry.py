@@ -40,9 +40,7 @@ class TestLLMRetry:
 
         async with llm_db.session_factory() as session:
             result = await session.exec(
-                select(LLMRequest).where(
-                    LLMRequest.llm_request_id == original_id
-                )
+                select(LLMRequest).where(LLMRequest.llm_request_id == original_id)
             )
             old_req = result.one()
 
@@ -100,8 +98,7 @@ class TestLLMRetry:
         async with llm_db.session_factory() as session:
             result = await session.exec(
                 select(LLMRequest).where(
-                    LLMRequest.llm_request_id
-                    == already_superseded.llm_request_id
+                    LLMRequest.llm_request_id == already_superseded.llm_request_id
                 )
             )
             req = result.one()
@@ -133,9 +130,7 @@ class TestLLMRetry:
 
             async with llm_db.session_factory() as session:
                 result = await session.exec(
-                    select(LLMRequest).where(
-                        LLMRequest.llm_request_id == original_id
-                    )
+                    select(LLMRequest).where(LLMRequest.llm_request_id == original_id)
                 )
                 old_req = result.one()
             first_superseded_by = old_req.superseded_by_id
@@ -145,9 +140,7 @@ class TestLLMRetry:
 
         async with llm_db.session_factory() as session:
             result = await session.exec(
-                select(LLMRequest).where(
-                    LLMRequest.llm_request_id == original_id
-                )
+                select(LLMRequest).where(LLMRequest.llm_request_id == original_id)
             )
             old_req = result.one()
 

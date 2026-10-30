@@ -84,7 +84,9 @@ class HostCoordinator:
     ) -> None:
         self.rate_period = rate_period
         self.server_error_codes: set[int] = set(
-            server_error_codes if server_error_codes is not None else {429, 502, 503, 504}
+            server_error_codes
+            if server_error_codes is not None
+            else {429, 502, 503, 504}
         )
         self.max_outage = max_outage
         self.base_backoff = base_backoff
@@ -145,9 +147,7 @@ class HostCoordinator:
         now = time.monotonic()
         sleep_duration = self._unavailable_until - now
         if sleep_duration > 0:
-            logger.info(
-                f"{self.name} unavailable, sleeping {sleep_duration:.0f}s..."
-            )
+            logger.info(f"{self.name} unavailable, sleeping {sleep_duration:.0f}s...")
             await asyncio.sleep(sleep_duration)
 
         async with self._availability_lock:
@@ -180,15 +180,14 @@ class HostCoordinator:
         if self._outage_start == 0.0:
             self._outage_start = time.monotonic()
         backoff = min(
-            self.base_backoff * (2 ** self._backoff_step),
+            self.base_backoff * (2**self._backoff_step),
             self.max_backoff,
         )
         self._backoff_step += 1
         self._backoff_epoch += 1
         self._unavailable_until = time.monotonic() + backoff
         logger.info(
-            f"{self.name} backoff set to {backoff:.0f}s "
-            f"(step {self._backoff_step})"
+            f"{self.name} backoff set to {backoff:.0f}s (step {self._backoff_step})"
         )
 
     def reset_on_success(self) -> None:

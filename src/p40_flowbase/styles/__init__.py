@@ -63,6 +63,7 @@ def apply_style(style_name: str = "style_1") -> None:
     Example::
 
         from p40_flowbase.styles import apply_style
+
         apply_style("style_1")
     """
     if style_name not in STYLES:

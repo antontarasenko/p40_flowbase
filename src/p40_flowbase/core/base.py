@@ -171,8 +171,7 @@ class BaseCheck(ABC):
         if not isinstance(obj, types):
             allowed = " or ".join(t.__name__ for t in types)
             raise TypeError(
-                f"{type(self).__name__} requires {allowed}, "
-                f"got {type(obj).__name__}"
+                f"{type(self).__name__} requires {allowed}, got {type(obj).__name__}"
             )
 
     def run(self, obj: "DataObject") -> None:
@@ -415,9 +414,7 @@ class DataObject(ABC):
                 shutil.rmtree(format_path)
             else:
                 format_path.unlink()
-            logger.info(
-                f"deleted_format | object={self.object_stem} fmt={fmt.value}"
-            )
+            logger.info(f"deleted_format | object={self.object_stem} fmt={fmt.value}")
 
     def _convert_formats(self, formats_to_create: Sequence[StrEnum]) -> None:
         """Run each format's conversion method and log a per-format summary.

@@ -169,7 +169,9 @@ class TestQuotesVerifiedStore:
     def test_green_by_digest_and_offset(self, test_local_data, tmp_path):
         store = quotes.ArtifactStore(tmp_path)
         sha = store.put(BODY)
-        resliced = quotes.reslice_quote(quote="revenue  was <B>$57.0 billion", artifact=BODY)
+        resliced = quotes.reslice_quote(
+            quote="revenue  was <B>$57.0 billion", artifact=BODY
+        )
         assert resliced is not None
         obj = _made(
             [
@@ -234,7 +236,9 @@ class TestQuotesVerifiedStore:
         with pytest.raises(ck.CheckFailedError, match="offset_mismatch"):
             ck.QuotesVerified(store=_store_for(tmp_path)).run(obj)
 
-    def test_refetched_artifact_is_missing_not_verified(self, test_local_data, tmp_path):
+    def test_refetched_artifact_is_missing_not_verified(
+        self, test_local_data, tmp_path
+    ):
         store = quotes.ArtifactStore(tmp_path)
         sha = store.put(BODY)
         obj = _made([_row(artifact_sha256=sha)], test_local_data)

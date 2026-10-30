@@ -61,6 +61,7 @@ class Table(DataObject, DagsterAssetWiring):
             widget_id: int
             name: str
 
+
         class WidgetsTable(Table):
             id = "widgets"
             description = "Widget master table"
@@ -75,7 +76,7 @@ class Table(DataObject, DagsterAssetWiring):
 
     ``pyproject.toml`` (so the template ships with the wheel)::
 
-        [tool.setuptools.package-data]
+        [tool.setuptools.package - data]
         their_pkg = ["py.typed", "resources/templates/tables/*.sql.jinja"]
 
     Escape hatches
@@ -105,8 +106,8 @@ class Table(DataObject, DagsterAssetWiring):
     the view ``t``. It returns a lazy DuckDB relation; only what you pull
     into Python lives in RAM::
 
-        n = obj.sql("SELECT COUNT(*) FROM t").fetchone()[0]     # scalar, no materialize
-        table = obj.sql().to_arrow_table()                               # whole table → pyarrow
+        n = obj.sql("SELECT COUNT(*) FROM t").fetchone()[0]  # scalar, no materialize
+        table = obj.sql().to_arrow_table()  # whole table → pyarrow
         rows = obj.sql("SELECT city FROM t").to_arrow_table().to_pylist()
 
     Cross into Python through ``.to_arrow_table()`` (pyarrow is already a
@@ -226,7 +227,8 @@ class Table(DataObject, DagsterAssetWiring):
         """
         if validate:
             validate_arrow_against_pydantic(
-                arrow_table=arrow, model=self.row_schema,
+                arrow_table=arrow,
+                model=self.row_schema,
             )
         pq.write_table(arrow, self.path_to_format(TableFormat.PARQUET))
 
@@ -263,7 +265,8 @@ class Table(DataObject, DagsterAssetWiring):
             if validate:
                 schema = con.sql(stmt).limit(0).to_arrow_table().schema
                 validate_arrow_schema_against_pydantic(
-                    schema=schema, model=self.row_schema,
+                    schema=schema,
+                    model=self.row_schema,
                 )
             con.execute(f"COPY ({stmt}) TO '{dst}' (FORMAT parquet)")
         finally:

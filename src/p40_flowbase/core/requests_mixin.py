@@ -56,6 +56,7 @@ def _format_error_counter(c: Counter[str]) -> str:
         return "none"
     return ",".join(f"{k}:{v}" for k, v in c.most_common())
 
+
 if TYPE_CHECKING:
     from sqlalchemy.sql.elements import ColumnElement
 
@@ -166,9 +167,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
                     has_pending = await self._has_pending_rows()
                     has_failed = retries > 0 and await self._has_failed_rows()
                     if not has_pending and not has_failed:
-                        logger.info(
-                            f"{self.object_stem}: already complete, skipping"
-                        )
+                        logger.info(f"{self.object_stem}: already complete, skipping")
                         # Re-validate cached data so a Dagster retry on
                         # finished-but-failed output still goes red.
                         await self._arun_checks()
@@ -290,9 +289,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             build_recursive_task_graph,
         )
 
-        effective_rate_limit = (
-            rate_limit if rate_limit is not None else self.rate_limit
-        )
+        effective_rate_limit = rate_limit if rate_limit is not None else self.rate_limit
         effective_rate_period = (
             rate_period if rate_period is not None else self.rate_period
         )
@@ -340,9 +337,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             config=config if config else None,  # pyright: ignore[reportArgumentType]
         )
 
-        organized: dict[str, list[list[TRequest]]] = result.get(
-            "organized_results", {}
-        )
+        organized: dict[str, list[list[TRequest]]] = result.get("organized_results", {})
         return organized
 
     async def _run_batch(
@@ -387,9 +382,7 @@ class RequestsDBMixin(DB, ABC, Generic[TRequest]):
             except Exception as e:  # noqa: BLE001  # tally individual task failures without aborting the wave
                 bad += 1
                 error_counter[type(e).__name__] += 1
-                logger.error(
-                    f"{label}_failed | type={type(e).__name__} msg={e}"
-                )
+                logger.error(f"{label}_failed | type={type(e).__name__} msg={e}")
                 continue
             executed.append(result)
             if is_success(result):

@@ -49,9 +49,7 @@ class TestHTTPRetry:
 
         async with http_db.session_factory() as session:
             result = await session.exec(
-                select(HTTPRequest).where(
-                    HTTPRequest.http_request_id == original_id
-                )
+                select(HTTPRequest).where(HTTPRequest.http_request_id == original_id)
             )
             old_req = result.one()
 
@@ -145,9 +143,7 @@ class TestHTTPRetry:
 
         async with http_db.session_factory() as session:
             result = await session.exec(
-                select(HTTPRequest).where(
-                    HTTPRequest.http_request_id == original_id
-                )
+                select(HTTPRequest).where(HTTPRequest.http_request_id == original_id)
             )
             old_req = result.one()
 

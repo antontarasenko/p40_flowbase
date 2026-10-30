@@ -318,10 +318,12 @@ class Models:
         raise ValueError(msg)
 
 
-AGENT_SUPPORTED_PROVIDERS: Final[frozenset[Providers]] = frozenset({
-    Providers.ANTHROPIC,
-    Providers.OPENAI,
-})
+AGENT_SUPPORTED_PROVIDERS: Final[frozenset[Providers]] = frozenset(
+    {
+        Providers.ANTHROPIC,
+        Providers.OPENAI,
+    }
+)
 """Providers whose models can drive an ``AgentTask``.
 
 Today this excludes Google because neither ``claude-agent-sdk`` nor

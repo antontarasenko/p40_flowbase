@@ -92,11 +92,7 @@ class DB(DataObject, DagsterAssetWiring):
         """
         from sqlmodel import SQLModel as SQLModelBase
 
-        tables = [
-            cls.__table__
-            for cls in self.tables
-            if hasattr(cls, "__table__")
-        ]
+        tables = [cls.__table__ for cls in self.tables if hasattr(cls, "__table__")]
         if tables:
             async with self.engine.begin() as conn:
                 await conn.run_sync(
@@ -111,11 +107,7 @@ class DB(DataObject, DagsterAssetWiring):
         """Drop all tables defined in ``tables``."""
         from sqlmodel import SQLModel as SQLModelBase
 
-        tables = [
-            cls.__table__
-            for cls in self.tables
-            if hasattr(cls, "__table__")
-        ]
+        tables = [cls.__table__ for cls in self.tables if hasattr(cls, "__table__")]
         if tables:
             async with self.engine.begin() as conn:
                 await conn.run_sync(
@@ -184,7 +176,9 @@ class DB(DataObject, DagsterAssetWiring):
 
         if fmt is None:
             formats_to_create = [
-                f for f in format_class if f != self.make_format  # type: ignore[redundant-expr]
+                f
+                for f in format_class
+                if f != self.make_format  # type: ignore[redundant-expr]
             ]
         else:
             if not isinstance(fmt, StrEnum):

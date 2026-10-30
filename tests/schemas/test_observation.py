@@ -47,8 +47,12 @@ class TestObservationValidators:
 
     def test_green_timeless_row(self):
         obs = sc.Observation.model_validate(
-            _good(period_start_date=None, period_end_date=None, value_float=None,
-                  value_str="AA+")
+            _good(
+                period_start_date=None,
+                period_end_date=None,
+                value_float=None,
+                value_str="AA+",
+            )
         )
         assert obs.value == "AA+"
 
@@ -70,9 +74,7 @@ class TestObservationValidators:
 
     def test_red_period_order(self):
         with pytest.raises(pyd.ValidationError, match="<="):
-            sc.Observation.model_validate(
-                _good(period_start_date="2025-10-27")
-            )
+            sc.Observation.model_validate(_good(period_start_date="2025-10-27"))
 
     def test_red_extra_field(self):
         with pytest.raises(pyd.ValidationError, match="Extra inputs"):
@@ -99,24 +101,39 @@ class TestTypedLevels:
     def test_instant_requires_as_of(self):
         with pytest.raises(pyd.ValidationError, match="as_of_date"):
             sc.InstantObservation.model_validate(
-                {"ref_id": "x", "metric": "m_cnt", "source_url": "https://e.com",
-                 "quote": "q"}
+                {
+                    "ref_id": "x",
+                    "metric": "m_cnt",
+                    "source_url": "https://e.com",
+                    "quote": "q",
+                }
             )
 
     def test_period_label(self):
         row = sc.PeriodObservation.model_validate(
-            {"ref_id": "x", "metric": "m_cnt", "source_url": "https://e.com",
-             "quote": "q", "period_start_date": "2025-07-28",
-             "period_end_date": "2025-10-26", "period_label": "Q3 FY2026"}
+            {
+                "ref_id": "x",
+                "metric": "m_cnt",
+                "source_url": "https://e.com",
+                "quote": "q",
+                "period_start_date": "2025-07-28",
+                "period_end_date": "2025-10-26",
+                "period_label": "Q3 FY2026",
+            }
         )
         assert row.period_label == "Q3 FY2026"
 
     def test_period_order_red(self):
         with pytest.raises(pyd.ValidationError, match="<="):
             sc.PeriodObservation.model_validate(
-                {"ref_id": "x", "metric": "m_cnt", "source_url": "https://e.com",
-                 "quote": "q", "period_start_date": "2025-10-27",
-                 "period_end_date": "2025-10-26"}
+                {
+                    "ref_id": "x",
+                    "metric": "m_cnt",
+                    "source_url": "https://e.com",
+                    "quote": "q",
+                    "period_start_date": "2025-10-27",
+                    "period_end_date": "2025-10-26",
+                }
             )
 
     def test_project_subclass_typed_value(self):
@@ -124,20 +141,31 @@ class TestTypedLevels:
             revenue_gaap_b_usd: float
 
         row = QuarterlyRevenue.model_validate(
-            {"ref_id": "x", "metric": "revenue_gaap_b_usd",
-             "source_url": "https://e.com", "quote": "q",
-             "period_start_date": "2025-07-28", "period_end_date": "2025-10-26",
-             "revenue_gaap_b_usd": 57.0}
+            {
+                "ref_id": "x",
+                "metric": "revenue_gaap_b_usd",
+                "source_url": "https://e.com",
+                "quote": "q",
+                "period_start_date": "2025-07-28",
+                "period_end_date": "2025-10-26",
+                "revenue_gaap_b_usd": 57.0,
+            }
         )
         assert row.revenue_gaap_b_usd == 57.0
-        assert "revenue_gaap_b_usd" in arrow_schema_from_pydantic(QuarterlyRevenue).names
+        assert (
+            "revenue_gaap_b_usd" in arrow_schema_from_pydantic(QuarterlyRevenue).names
+        )
 
 
 class TestBackends:
     def test_arrow_schemas_derive(self):
-        for model in (sc.ReferenceBase, sc.MetricObservation,
-                      sc.InstantObservation, sc.PeriodObservation,
-                      sc.Observation):
+        for model in (
+            sc.ReferenceBase,
+            sc.MetricObservation,
+            sc.InstantObservation,
+            sc.PeriodObservation,
+            sc.Observation,
+        ):
             schema = arrow_schema_from_pydantic(model)
             assert "quote" in schema.names
         assert len(arrow_schema_from_pydantic(sc.Observation)) == 23
@@ -159,15 +187,24 @@ class TestBackends:
 
 class TestVerifyQuote:
     def test_exact(self):
-        assert sc.verify_quote(quote="$57.0 billion", source_text="was $57.0 billion.") == "exact"
+        assert (
+            sc.verify_quote(quote="$57.0 billion", source_text="was $57.0 billion.")
+            == "exact"
+        )
 
     def test_normalized_only(self):
-        assert sc.verify_quote(
-            quote="was  $57.0 billion", source_text="was $57.0 billion."
-        ) == "normalized"
+        assert (
+            sc.verify_quote(
+                quote="was  $57.0 billion", source_text="was $57.0 billion."
+            )
+            == "normalized"
+        )
 
     def test_no_match(self):
-        assert sc.verify_quote(quote="$58.0 billion", source_text="was $57.0 billion.") is None
+        assert (
+            sc.verify_quote(quote="$58.0 billion", source_text="was $57.0 billion.")
+            is None
+        )
 
 
 class TestArtifactIdentity:
@@ -175,14 +212,22 @@ class TestArtifactIdentity:
         row = sc.Observation.model_validate(_good())
         assert row.artifact_sha256 is None
         digest = "c71cc2644bc9004a7863c4bcaf9be9812ef660a5548c7be95ed4c7952b8d597d"
-        assert sc.Observation.model_validate(_good(artifact_sha256=digest)).artifact_sha256 == digest
+        assert (
+            sc.Observation.model_validate(_good(artifact_sha256=digest)).artifact_sha256
+            == digest
+        )
         with pytest.raises(pyd.ValidationError):
             sc.Observation.model_validate(_good(artifact_sha256="not-a-digest"))
 
     def test_verify_quote_hint_uses_folding(self):
         source = "The company\u2019s revenue \u2014 $57.0\u00a0billion."
-        assert sc.verify_quote(quote="revenue - $57.0 billion", source_text=source) == "normalized"
-        assert sc.verify_quote(quote="$57.0\u00a0billion", source_text=source) == "exact"
+        assert (
+            sc.verify_quote(quote="revenue - $57.0 billion", source_text=source)
+            == "normalized"
+        )
+        assert (
+            sc.verify_quote(quote="$57.0\u00a0billion", source_text=source) == "exact"
+        )
         assert sc.verify_quote(quote="$58.0 billion", source_text=source) is None
 
 

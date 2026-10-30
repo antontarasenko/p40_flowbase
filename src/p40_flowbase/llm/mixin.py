@@ -129,8 +129,9 @@ class LLMDB(HTTPDB):
             ).all()
             cost_total = (
                 await session.exec(
-                    select(func.coalesce(func.sum(LLMRequest.expected_input_cost_usd), 0.0))
-                    .where(LLMRequest.response_text.is_not(None))  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
+                    select(
+                        func.coalesce(func.sum(LLMRequest.expected_input_cost_usd), 0.0)
+                    ).where(LLMRequest.response_text.is_not(None))  # type: ignore[union-attr]  # pyright: ignore[reportAttributeAccessIssue,reportOptionalMemberAccess]
                 )
             ).first()
         total = sum(int(c or 0) for _, c in status_rows)
@@ -145,9 +146,8 @@ class LLMDB(HTTPDB):
             "total": total,
             "ok": ok,
             "failed": failed,
-            "errors": ",".join(
-                f"{k}:{v}" for k, v in error_breakdown.most_common()
-            ) or "none",
+            "errors": ",".join(f"{k}:{v}" for k, v in error_breakdown.most_common())
+            or "none",
             "cost_usd_expected": f"{float(cost_total or 0.0):.4f}",
         }
 
@@ -270,7 +270,9 @@ class LLMDB(HTTPDB):
         return body
 
     @staticmethod
-    def _gemini_thinking_config(model: str, effort: str | None) -> dict[str, Any] | None:
+    def _gemini_thinking_config(
+        model: str, effort: str | None
+    ) -> dict[str, Any] | None:
         """Map an ``LLMEffort`` value to a Gemini ``thinkingConfig`` block.
 
         Gemini 3.x uses ``thinking_level`` (MINIMAL/LOW/MEDIUM/HIGH); Gemini 2.5
@@ -591,9 +593,7 @@ class LLMDB(HTTPDB):
         for file_id in attachment_ids:
             file_uuid = uuid.UUID(file_id) if isinstance(file_id, str) else file_id
             async with self.session_factory() as session:
-                file_statement = select(LLMFile).where(
-                    LLMFile.llm_file_id == file_uuid
-                )
+                file_statement = select(LLMFile).where(LLMFile.llm_file_id == file_uuid)
                 file_result = await session.exec(file_statement)
                 llm_file = file_result.first()
 
@@ -604,9 +604,7 @@ class LLMDB(HTTPDB):
                 )
                 continue
 
-            object_stem = (
-                f"{llm_file.data_object_id}-{llm_file.data_object_version}"
-            )
+            object_stem = f"{llm_file.data_object_id}-{llm_file.data_object_version}"
             local_dir = pathlib.Path(self.local_data) / object_stem
             format_path = local_dir / f"{object_stem}.{llm_file.data_object_format}"
 
@@ -843,6 +841,7 @@ class LLMDB(HTTPDB):
             llm_requests = result.all()
 
         async with aiohttp.ClientSession() as http_client:
+
             async def execute_one(llm_request: LLMRequest) -> LLMRequest:
                 return await self._process_single_llm_request(
                     http_client,
@@ -912,7 +911,9 @@ class LLMDB(HTTPDB):
         new_requests = await self._add_llm_requests(retry_requests_data)
 
         async with self.session_factory() as session:
-            for failed_request, new_request in zip(failed_requests, new_requests, strict=True):
+            for failed_request, new_request in zip(
+                failed_requests, new_requests, strict=True
+            ):
                 await session.exec(
                     sqlalchemy.update(LLMRequest)
                     .where(

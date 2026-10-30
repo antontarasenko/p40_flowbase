@@ -63,9 +63,7 @@ def _annotation_to_arrow(annotation: Any) -> tuple[pa.DataType, bool]:
         non_none = tuple(a for a in args if a is not type(None))
         nullable = len(non_none) < len(args)
         if len(non_none) != 1:
-            raise TypeError(
-                f"Cannot map Union {annotation!r} to a single Arrow type"
-            )
+            raise TypeError(f"Cannot map Union {annotation!r} to a single Arrow type")
         arrow_t, _ = _annotation_to_arrow(non_none[0])
         return arrow_t, nullable
     if annotation in _PRIMITIVE_MAP:

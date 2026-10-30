@@ -90,14 +90,13 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
             if status != 200:
                 key = f"http{status}" if status is not None else "no_status"
                 error_breakdown[key] += int(count or 0)
-        bytes_in, avg_latency = (ok_aggregates or (0, 0.0))
+        bytes_in, avg_latency = ok_aggregates or (0, 0.0)
         return {
             "total": total,
             "ok": ok,
             "failed": failed,
-            "errors": ",".join(
-                f"{k}:{v}" for k, v in error_breakdown.most_common()
-            ) or "none",
+            "errors": ",".join(f"{k}:{v}" for k, v in error_breakdown.most_common())
+            or "none",
             "bytes_in": int(bytes_in or 0),
             "avg_latency_s": f"{float(avg_latency or 0.0):.3f}",
         }
@@ -239,6 +238,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
             rows = result.all()
 
         async with aiohttp.ClientSession() as http_client:
+
             async def execute_one(row: HTTPRequest) -> HTTPRequest:
                 return await self._process_single_http_request(
                     http_client,
@@ -368,9 +368,7 @@ class HTTPDB(RequestsDBMixin[HTTPRequest]):
                                 HTTPRequest.http_request_id  # type: ignore[arg-type]
                                 == row.http_request_id  # pyright: ignore[reportArgumentType]
                             )
-                            .values(
-                                superseded_by_id=new_request.http_request_id
-                            )
+                            .values(superseded_by_id=new_request.http_request_id)
                         )
                         await session.commit()
                 except Exception as e:  # noqa: BLE001  # log per-request retry failure; keep batch going

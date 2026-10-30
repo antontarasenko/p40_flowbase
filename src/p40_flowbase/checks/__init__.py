@@ -15,8 +15,10 @@ Example::
     import p40_flowbase as fb
     from p40_flowbase import checks as ck
 
+
     class WeatherSummaryTable(fb.Table):
         checks = (ck.MinRows(1), ck.NoNulls("city"), ck.Unique("city"))
+
 
     class WeatherHTTPDB(fb.HTTPDB):
         checks = (ck.MinRequests(1), ck.MaxFailureRate(frac=0.0))
@@ -110,17 +112,11 @@ class NoNulls(BaseCheck):
         names = obj.sql().columns  # type: ignore[attr-defined]
         for col in self.cols:
             if col not in names:
-                raise CheckFailedError(
-                    f"{self.name}: column '{col}' not in {names}"
-                )
-        exprs = ", ".join(
-            f'COUNT(*) FILTER (WHERE "{c}" IS NULL)' for c in self.cols
-        )
+                raise CheckFailedError(f"{self.name}: column '{col}' not in {names}")
+        exprs = ", ".join(f'COUNT(*) FILTER (WHERE "{c}" IS NULL)' for c in self.cols)
         row = obj.sql(f"SELECT {exprs} FROM t").fetchone()  # type: ignore[attr-defined]  # noqa: S608
         counts = row if row is not None else [0] * len(self.cols)
-        offenders = [
-            f"{c}={n}" for c, n in zip(self.cols, counts, strict=True) if n
-        ]
+        offenders = [f"{c}={n}" for c, n in zip(self.cols, counts, strict=True) if n]
         if offenders:
             raise CheckFailedError(f"{self.name}: nulls in {','.join(offenders)}")
 
@@ -144,9 +140,7 @@ class Unique(BaseCheck):
         names = obj.sql().columns  # type: ignore[attr-defined]
         for col in self.cols:
             if col not in names:
-                raise CheckFailedError(
-                    f"{self.name}: column '{col}' not in {names}"
-                )
+                raise CheckFailedError(f"{self.name}: column '{col}' not in {names}")
         cols_sql = ", ".join(f'"{c}"' for c in self.cols)
         row = obj.sql(  # type: ignore[attr-defined]
             f"SELECT max(cnt) FROM (SELECT COUNT(*) AS cnt "  # noqa: S608
@@ -154,9 +148,7 @@ class Unique(BaseCheck):
         ).fetchone()
         max_count = row[0] if row and row[0] is not None else 0
         if max_count > 1:
-            raise CheckFailedError(
-                f"{self.name}: max group size = {max_count}"
-            )
+            raise CheckFailedError(f"{self.name}: max group size = {max_count}")
 
 
 # Composite checks
@@ -194,13 +186,10 @@ class NoEmptyFiles(BaseCheck):
     @override
     def run(self, obj: "DataObject") -> None:
         self._require(obj, Composite)
-        offenders = [
-            str(p) for p in _composite_files(obj) if p.stat().st_size == 0
-        ]
+        offenders = [str(p) for p in _composite_files(obj) if p.stat().st_size == 0]
         if offenders:
             raise CheckFailedError(
-                f"{self.name}: {len(offenders)} empty file(s); "
-                f"first={offenders[0]}"
+                f"{self.name}: {len(offenders)} empty file(s); first={offenders[0]}"
             )
 
 
@@ -343,9 +332,7 @@ async def _count_request_rows(
             "request-DB checks need it to count rows."
         )
     statement = (
-        select(func.count())
-        .select_from(model)
-        .where(model.superseded_by_id.is_(None))  # type: ignore[union-attr]
+        select(func.count()).select_from(model).where(model.superseded_by_id.is_(None))  # type: ignore[union-attr]
     )
     if extra_predicate is not None:
         statement = statement.where(extra_predicate)
@@ -447,8 +434,7 @@ class QuotesVerified(BaseCheck):
         self,
         *,
         store: Callable[["DataObject"], ArtifactStore] | None = None,
-        resolver: Callable[["DataObject", str, str | None], str | None]
-        | None = None,
+        resolver: Callable[["DataObject", str, str | None], str | None] | None = None,
         on_missing: str | float = "fail",
     ) -> None:
         if (store is None) == (resolver is None):

@@ -39,9 +39,7 @@ def _coerce_field(spec: Any) -> tuple[Any, Any]:
     """
     if isinstance(spec, tuple):
         if len(spec) != 2:
-            raise ValueError(
-                f"Column spec tuple must be (type, default), got {spec!r}"
-            )
+            raise ValueError(f"Column spec tuple must be (type, default), got {spec!r}")
         return spec
     return spec, ...
 

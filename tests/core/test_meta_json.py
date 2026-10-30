@@ -42,7 +42,9 @@ class _Upstream(Table):
 
 class _Row(pyd.BaseModel):
     city: str = pyd.Field(title="City name", description="Human-readable city name.")
-    temp_c: float = pyd.Field(title="Air temperature", description="2 m air temperature.")
+    temp_c: float = pyd.Field(
+        title="Air temperature", description="2 m air temperature."
+    )
 
 
 class _MetaTable(Table):
@@ -82,7 +84,9 @@ class _Linked(Table):
     supported_versions: ClassVar[tuple[Enum, ...]] = (_LinkedVersion.Q3,)
     row_schema: ClassVar[type[pyd.BaseModel]] = _UpstreamRow
     links: ClassVar[tuple[str, ...]] = (
-        "projects/sp", "users/anton", "inbox/260926_sp_bank",
+        "projects/sp",
+        "users/anton",
+        "inbox/260926_sp_bank",
     )
 
     @override
@@ -109,7 +113,9 @@ class TestMetaJson:
         assert meta["object_stem"] == "meta_test_table-main"
         assert meta["master_format"] == "parquet"
         assert meta["version"] == {
-            "id": "main", "name": "Main", "description": "Main dataset",
+            "id": "main",
+            "name": "Main",
+            "description": "Main dataset",
         }
 
     def test_made_at_utc_iso_z(self):
@@ -144,9 +150,17 @@ class TestMetaJson:
     def test_root_fields_uniform_no_class_specifics(self):
         meta = _meta(_MetaTable(_Version.MAIN))
         assert set(meta) == {
-            "object_id", "object_stem", "description", "version",
-            "master_format", "producer", "lineage", "links", "made_at_utc",
-            "content", "optional",
+            "object_id",
+            "object_stem",
+            "description",
+            "version",
+            "master_format",
+            "producer",
+            "lineage",
+            "links",
+            "made_at_utc",
+            "content",
+            "optional",
         }
 
     def test_links_default_empty(self):
@@ -154,7 +168,9 @@ class TestMetaJson:
 
     def test_links_class_then_version_deduplicated(self):
         assert _meta(_Linked(_LinkedVersion.Q3))["links"] == [
-            "projects/sp", "users/anton", "inbox/260926_sp_bank",
+            "projects/sp",
+            "users/anton",
+            "inbox/260926_sp_bank",
         ]
 
     def test_malformed_class_link_rejected_at_definition(self):
@@ -171,9 +187,17 @@ class TestMetaJson:
         meta = _meta(_Blob(_Version.MAIN))
         # Same uniform root as a Table; class-specific bucket is empty (not absent).
         assert set(meta) == {
-            "object_id", "object_stem", "description", "version",
-            "master_format", "producer", "lineage", "links", "made_at_utc",
-            "content", "optional",
+            "object_id",
+            "object_stem",
+            "description",
+            "version",
+            "master_format",
+            "producer",
+            "lineage",
+            "links",
+            "made_at_utc",
+            "content",
+            "optional",
         }
         assert set(meta["content"]) == {"bytes", "sha256"}
         assert meta["optional"] == {}
