@@ -2,6 +2,13 @@
 
 ## Branch `main`
 
+- helpers: `numbers_in` reads a group as one to three digits followed by groups of three, so a year before a count stays two numbers and a number before a comma is kept
+- helpers: `FoldedText`, an artifact folded once for many reslices; `reslice_quote` takes it or a string
+- helpers: `ArtifactSource`, any object answering a digest with text, accepted by `QuotesVerified(store=...)`; `ArtifactStore.has`
+- helpers: `markdown_plain` drops the tail a quote cut inside a link keeps
+- helpers: `arrow_table`, pydantic rows or dicts as a pyarrow table under the model's schema
+- checks, schemas: `hash_mismatch` status for an artifact that resolves to other bytes than `artifact_sha256`, failing the run whatever `on_missing` says
+- docs: quote verification examples use `arrow_table` and `FoldedText`; the two length measures and the group rule stated
 - contrib: `ruff format` replaces black in the pre-commit routine, the whole tree formatted once; black was never a dependency
 
 ## 0.8.3 (2026-10-30)

@@ -176,6 +176,7 @@ class ReferenceBase(SchemaBase):
 QUOTE_STATUSES = (
     "verified",
     "artifact_missing",
+    "hash_mismatch",
     "quote_not_found",
     "offset_mismatch",
 )
@@ -201,7 +202,8 @@ class QuoteStatus(SchemaBase):
         description=(
             "verified: the quote is the slice at its offset, or a substring "
             "when no offset is stored. artifact_missing: no artifact for the "
-            "row, or bytes whose digest differs from artifact_sha256. "
+            "row. hash_mismatch: an artifact resolved whose digest differs "
+            "from artifact_sha256, a re-fetched or stale file. "
             "quote_not_found: the quote is nowhere in the artifact. "
             "offset_mismatch: the quote is in the artifact but not at "
             "quote_offset_char."

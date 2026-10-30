@@ -14,6 +14,7 @@ EN_DASH = "\u2013"
 NBSP = "\u00a0"
 SOFT_HYPHEN = "\u00ad"
 FI_LIGATURE = "\ufb01"
+NNBSP = "\u202f"
 
 ARTIFACT = (
     "Revenue was <b>$57.0 billion</b>, up 62% from a year ago.\n\n"
@@ -66,6 +67,16 @@ class TestResliceQuote:
         assert quotes.reslice_quote(quote="net income", artifact=ARTIFACT) is None
         assert quotes.reslice_quote(quote="  ", artifact=ARTIFACT) is None
 
+    def test_folded_once_for_many_quotes(self):
+        folded = quotes.FoldedText(ARTIFACT)
+        assert folded.reslice("revenue was") == quotes.reslice_quote(
+            quote="revenue was", artifact=ARTIFACT
+        )
+        assert quotes.reslice_quote(
+            quote="guidance", artifact=folded
+        ) == folded.reslice("guidance")
+        assert folded.reslice("net income") is None
+
 
 class TestArtifactStore:
     def test_round_trip_and_idempotent_put(self, tmp_path):
@@ -102,6 +113,27 @@ class TestNumbers:
         }
         assert quotes.numbers_in("2025 2026") == {Decimal(2025), Decimal(2026)}
         assert quotes.numbers_in("57,5 percent") == {Decimal("57.5")}
+        assert quotes.numbers_in("1,234.5 and 1,2345") == {
+            Decimal("1234.5"),
+            Decimal("1.2345"),
+        }
+        assert quotes.numbers_in(f"1{NNBSP}234 people") == {Decimal(1234)}
+
+    def test_a_year_before_a_count_stays_two_numbers(self):
+        assert quotes.numbers_in("k 31. srpnu 2024 481 zam") == {
+            Decimal(31),
+            Decimal(2024),
+            Decimal(481),
+        }
+        assert quotes.numbers_in("In 2024, 1,489 people") == {
+            Decimal(2024),
+            Decimal(1489),
+        }
+        assert quotes.numbers_in("1 651   572 454   194 163") == {
+            Decimal(1651),
+            Decimal(572454),
+            Decimal(194163),
+        }
 
     def test_value_in_quote(self):
         quote = "Revenue was $57.0 billion, up 62% from a year ago."
@@ -131,6 +163,10 @@ class TestHtmlGate:
             "up 62\\% from a year ago."
         )
         assert plain == "Results\n\nRevenue was $57.0 billion, up 62% from a year ago."
+
+    def test_markdown_plain_drops_a_link_tail(self):
+        cut = "TIMISOARA, RO](https://careers.example.com/x?id=1) and"
+        assert quotes.markdown_plain(cut) == "TIMISOARA, RO and"
 
     def test_quote_in_html_across_renderings(self):
         quote = "Revenue was **$57.0 billion**, up 62% from a year ago"

@@ -236,18 +236,39 @@ class TestQuotesVerifiedStore:
         with pytest.raises(ck.CheckFailedError, match="offset_mismatch"):
             ck.QuotesVerified(store=_store_for(tmp_path)).run(obj)
 
-    def test_refetched_artifact_is_missing_not_verified(
-        self, test_local_data, tmp_path
-    ):
+    def test_refetched_artifact_is_a_hash_mismatch(self, test_local_data, tmp_path):
         store = quotes.ArtifactStore(tmp_path)
         sha = store.put(BODY)
         obj = _made([_row(artifact_sha256=sha)], test_local_data)
         check = ck.QuotesVerified(store=_store_for(tmp_path))
         check.run(obj)
         store.path_of(sha).write_bytes(BODY.replace("62%", "63%").encode("utf-8"))
-        with pytest.raises(ck.CheckFailedError, match="artifact_missing"):
+        [status] = check.report(obj)
+        assert status.status == "hash_mismatch"
+        with pytest.raises(ck.CheckFailedError, match="hash_mismatch"):
             check.run(obj)
-        ck.QuotesVerified(store=_store_for(tmp_path), on_missing="skip").run(obj)
+        with pytest.raises(ck.CheckFailedError, match="hash_mismatch"):
+            ck.QuotesVerified(store=_store_for(tmp_path), on_missing="skip").run(obj)
+        store.path_of(sha).unlink()
+        [status] = check.report(obj)
+        assert status.status == "artifact_missing"
+
+    def test_any_source_answering_a_digest(self, test_local_data):
+        class _Manifest:
+            def __init__(self, texts: dict[str, str]) -> None:
+                self.texts = texts
+
+            def get(self, sha256: str) -> str | None:
+                return self.texts.get(sha256)
+
+        sha = quotes.sha256_of_text(BODY)
+        obj = _made(
+            [_row(artifact_sha256=sha), _row(ref_id="stale", artifact_sha256="1" * 64)],
+            test_local_data,
+        )
+        manifest = _Manifest({sha: BODY, "1" * 64: BODY})
+        report = ck.QuotesVerified(store=lambda obj: manifest).report(obj)
+        assert [s.status for s in report] == ["verified", "hash_mismatch"]
 
     def test_resolver_path_checks_a_digest_when_the_row_has_one(self, test_local_data):
         obj = _made(
@@ -258,4 +279,4 @@ class TestQuotesVerifiedStore:
             test_local_data,
         )
         report = ck.QuotesVerified(resolver=_resolver).report(obj)
-        assert [s.status for s in report] == ["verified", "artifact_missing"]
+        assert [s.status for s in report] == ["verified", "hash_mismatch"]

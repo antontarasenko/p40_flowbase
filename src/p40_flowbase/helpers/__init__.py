@@ -2,6 +2,7 @@
 
 from p40_flowbase.helpers.arrow_schema import (
     arrow_schema_from_pydantic,
+    arrow_table,
     validate_arrow_against_pydantic,
 )
 from p40_flowbase.helpers.file_stats import (
@@ -17,6 +18,7 @@ from p40_flowbase.helpers.readme_html import render_readme_html
 
 __all__ = [
     "arrow_schema_from_pydantic",
+    "arrow_table",
     "count_files",
     "dir_size_bytes",
     "extract_json_from_response",

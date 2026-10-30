@@ -23,6 +23,7 @@ import datetime as _dt
 import decimal as _dc
 import types as _types
 import typing as _typing
+from collections.abc import Iterable
 from typing import (
     Any,
     get_args,
@@ -158,3 +159,18 @@ def validate_arrow_against_pydantic(
     callers that already hold a materialized ``pa.Table``.
     """
     validate_arrow_schema_against_pydantic(schema=arrow_table.schema, model=model)
+
+
+def arrow_table(
+    rows: Iterable[pyd.BaseModel | dict[str, Any]], schema: type[pyd.BaseModel]
+) -> pa.Table:
+    """Rows of a pydantic model as a pyarrow table under the model's derived
+    schema, dicts validated through the model first: what a producer of a
+    ``Table`` hands to ``save_arrow``."""
+    records = [
+        (
+            row if isinstance(row, pyd.BaseModel) else schema.model_validate(row)
+        ).model_dump(mode="python")
+        for row in rows
+    ]
+    return pa.Table.from_pylist(records, schema=arrow_schema_from_pydantic(schema))

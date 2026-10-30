@@ -15,7 +15,10 @@ import pydantic as pyd
 import p40_flowbase as fb
 from p40_flowbase import checks as ck
 from p40_flowbase import schemas as sc
-from p40_flowbase.helpers import quotes
+from p40_flowbase.helpers import (
+    arrow_table,
+    quotes,
+)
 
 
 def artifacts(obj: fb.DataObject) -> quotes.ArtifactStore:
@@ -43,8 +46,9 @@ class FactsTable(fb.Table):
         rows = []
         for page in PagesFiles(self.version).pages():
             sha = store.put(page.markdown)
+            folded = quotes.FoldedText(page.markdown)
             for candidate in extract(page=page):
-                sliced = quotes.reslice_quote(quote=candidate.quote, artifact=page.markdown)
+                sliced = folded.reslice(candidate.quote)
                 if sliced is None:
                     continue
                 rows.append(
@@ -58,16 +62,16 @@ class FactsTable(fb.Table):
                         value_text=candidate.value_text,
                     )
                 )
-        self.save_arrow(fb.arrow_table(rows, Fact))
+        self.save_arrow(arrow_table(rows, Fact))
 ```
 
-Constraints on what a quote must be belong to the row schema: a minimum length as a pydantic constraint, the numbers gate as a validator with `value_in_quote`. A page stored twice, as markdown and as raw HTML, gets the raw-HTML gate as a producer step with `quote_in_html`. Both gates are heuristics and never the proof.
+Constraints on what a quote must be belong to the row schema: a minimum length as a pydantic constraint, the numbers gate as a validator with `value_in_quote`. A page stored twice, as markdown and as raw HTML, gets the raw-HTML gate as a producer step with `quote_in_html`. Both gates are heuristics and never the proof. Two measures differ by design: a length constraint on `quote` counts every character, while `quote_in_html`'s `min_chars` counts the letters and digits of the folded quote, spaces and punctuation excluded. `numbers_in` reads a group as one to three digits followed by groups of three, so a year before a count stays two numbers; a decimal with exactly three fraction digits still reads as grouped. `markdown_plain` also drops the tail a quote cut inside a link keeps, the `](url)` after the link text.
 
 ## Check and report
 
-`ck.QuotesVerified(store=...)` resolves by digest; `ck.QuotesVerified(resolver=...)` is the 0.8.2 path, reading `source_url` and `source_transcript`, and fails a row whose resolved text does not hash to the `artifact_sha256` it carries. `on_missing` applies to rows without an artifact: `"fail"`, `"skip"`, or the fraction of rows that must verify.
+`ck.QuotesVerified(store=...)` resolves by digest: `store(obj)` returns an `ArtifactStore`, or any object with `get(sha256) -> str | None`, a project's own manifest over files it already keeps. `ck.QuotesVerified(resolver=...)` is the 0.8.2 path, reading `source_url` and `source_transcript`. On either path, text that does not hash to the `artifact_sha256` a row carries is `hash_mismatch`, a re-fetched or stale file, and fails the run whatever `on_missing` says; `on_missing` applies to rows with no artifact at all: `"fail"`, `"skip"`, or the fraction of rows that must verify.
 
-`report(obj)` judges every row and raises nothing. Each `schemas.QuoteStatus` carries one of four statuses, `verified`, `artifact_missing`, `quote_not_found` with a `normalized` hint when the quote would match after folding, and `offset_mismatch`, plus `occurrences`, how often the quote appears in the artifact, a review signal. `run(obj)` is built on the report and raises on the first row not verified, naming the status.
+`report(obj)` judges every row and raises nothing. Each `schemas.QuoteStatus` carries one of five statuses, `verified`, `artifact_missing`, `hash_mismatch`, `quote_not_found` with a `normalized` hint when the quote would match after folding, and `offset_mismatch`, plus `occurrences`, how often the quote appears in the artifact, a review signal. `run(obj)` is built on the report and raises on the first row not verified, naming the status.
 
 ```python
 class QuoteStatusTable(fb.Table):
@@ -75,7 +79,7 @@ class QuoteStatusTable(fb.Table):
 
     def _make(self) -> None:
         rows = ck.QuotesVerified(store=artifacts).report(FactsTable(self.version))
-        self.save_arrow(fb.arrow_table(rows, sc.QuoteStatus))
+        self.save_arrow(arrow_table(rows, sc.QuoteStatus))
 ```
 
 ## Folding

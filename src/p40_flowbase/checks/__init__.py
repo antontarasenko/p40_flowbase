@@ -54,6 +54,7 @@ from p40_flowbase.core.formats import CompositeFormat
 from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.core.table import Table
 from p40_flowbase.helpers.quotes import (
+    ArtifactSource,
     ArtifactStore,
     sha256_of_text,
 )
@@ -417,14 +418,15 @@ class QuotesVerified(BaseCheck):
     ``report`` says per row why it stands or fails, and ``run`` raises on
     the first row that fails.
 
-    :param store: Maps the checked object to the ``ArtifactStore`` holding
-        its artifacts, ``lambda obj: ArtifactStore(<a Composite's
-        .files>/artifacts)``; rows resolve by ``artifact_sha256``.
+    :param store: Maps the checked object to what answers a digest with the
+        artifact text, an ``ArtifactStore`` or any ``ArtifactSource`` of the
+        project's own, a manifest over files it already keeps; rows resolve
+        by ``artifact_sha256``.
     :param resolver: Maps ``(obj, source_url, source_transcript)`` to the
         artifact text, or ``None`` when the source is not stored: the raw
         stored body when ``source_transcript`` is ``None``, else the
-        referenced transcript. Rows with an ``artifact_sha256`` that the
-        returned text does not hash to fail as missing.
+        referenced transcript, the 0.8.2 path. Text that does not hash to
+        the ``artifact_sha256`` a row carries is ``hash_mismatch``.
     :param on_missing: Policy for rows without an artifact: ``"fail"``
         (default) fails on the first; ``"skip"`` verifies the rest; a float
         in (0, 1] requires at least that fraction of ALL rows verified.
@@ -433,7 +435,7 @@ class QuotesVerified(BaseCheck):
     def __init__(
         self,
         *,
-        store: Callable[["DataObject"], ArtifactStore] | None = None,
+        store: Callable[["DataObject"], ArtifactSource] | None = None,
         resolver: Callable[["DataObject", str, str | None], str | None] | None = None,
         on_missing: str | float = "fail",
     ) -> None:
@@ -465,31 +467,57 @@ class QuotesVerified(BaseCheck):
             "quote_offset_char, NULL FROM t"
         )
         rows = obj.sql(query).fetchall()  # type: ignore[attr-defined]
-        store = self.store(obj) if self.store is not None else None
-        artifacts: dict[tuple[str, str | None, str | None], str | None] = {}
+        source = self.store(obj) if self.store is not None else None
+        artifacts: dict[
+            tuple[str, str | None, str | None], tuple[str | None, bool]
+        ] = {}
         statuses: list[QuoteStatus] = []
         for ref_id, url, transcript, quote, offset, sha in rows:
             key = (url, transcript, sha)
             if key not in artifacts:
-                if store is not None:
-                    text = store.get(sha) if sha else None
-                elif self.resolver is not None:
-                    text = self.resolver(obj, url, transcript)
-                    if text is not None and sha and sha256_of_text(text) != sha:
-                        text = None
-                else:
-                    text = None
-                artifacts[key] = text
+                artifacts[key] = self._resolve(
+                    obj=obj, source=source, url=url, transcript=transcript, sha=sha
+                )
+            artifact, mismatched = artifacts[key]
             statuses.append(
                 self._judge(
                     ref_id=ref_id,
                     url=url,
                     quote=quote,
                     offset=offset,
-                    artifact=artifacts[key],
+                    artifact=artifact,
+                    mismatched=mismatched,
                 )
             )
         return statuses
+
+    def _resolve(
+        self,
+        *,
+        obj: "DataObject",
+        source: ArtifactSource | None,
+        url: str,
+        transcript: str | None,
+        sha: str | None,
+    ) -> tuple[str | None, bool]:
+        """The artifact text for a row and whether what resolved hashes to
+        another digest than the row's: a stale manifest, a re-fetched file."""
+        if source is not None:
+            text = source.get(sha) if sha else None
+            if text is None:
+                tampered = (
+                    sha is not None
+                    and isinstance(source, ArtifactStore)
+                    and source.has(sha)
+                )
+                return None, tampered
+        elif self.resolver is not None:
+            text = self.resolver(obj, url, transcript)
+        else:
+            return None, False
+        if text is not None and sha and sha256_of_text(text) != sha:
+            return None, True
+        return text, False
 
     @staticmethod
     def _judge(
@@ -499,14 +527,22 @@ class QuotesVerified(BaseCheck):
         quote: str,
         offset: int | None,
         artifact: str | None,
+        mismatched: bool,
     ) -> QuoteStatus:
+        if mismatched:
+            return QuoteStatus(
+                ref_id=ref_id,
+                source_url=url,
+                status="hash_mismatch",
+                message="the artifact that resolved hashes to another digest "
+                "than artifact_sha256: a re-fetched or stale file",
+            )
         if artifact is None:
             return QuoteStatus(
                 ref_id=ref_id,
                 source_url=url,
                 status="artifact_missing",
-                message="no stored source for the row, or bytes whose digest "
-                "differs from artifact_sha256",
+                message="no stored source for the row",
             )
         occurrences = artifact.count(quote)
         if offset is not None and artifact[offset : offset + len(quote)] == quote:

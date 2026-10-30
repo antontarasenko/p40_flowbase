@@ -15,6 +15,7 @@ import unicodedata
 from decimal import Decimal
 from typing import (
     NamedTuple,
+    Protocol,
     override,
 )
 
@@ -24,11 +25,17 @@ _DOUBLE_QUOTES = dict.fromkeys((0x201C, 0x201D, 0x201E), '"')
 _FOLDED = _DASHES | _SINGLE_QUOTES | _DOUBLE_QUOTES
 _DROPPED = frozenset({0x2022, 0x00AD, 0x200B, 0x200C, 0x200D, 0xFEFF})
 
-_NUMBER = re.compile(r"\d(?:[\d.,\u00a0 ]*\d)?")
-_GROUP_SEPARATOR = re.compile(r"[.,\u00a0 ](?=\d{3}(?!\d))")
-_DECIMAL = re.compile(r"^\d+(?:[.,]\d+)?$")
+_GROUP_SEPARATORS = ",." + "\u00a0" + "\u202f" + " "
+_NUMBER = re.compile(
+    r"\d{1,3}(?:[" + re.escape(_GROUP_SEPARATORS) + r"]\d{3})+(?:[.,]\d+)?(?!\d)"
+    r"|\d+(?:[.,]\d+)?"
+)
+_GROUPED = re.compile(
+    r"^\d{1,3}(?:[" + re.escape(_GROUP_SEPARATORS) + r"]\d{3})+(?!\d)"
+)
 _MD_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
 _MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_MD_LINK_TAIL = re.compile(r"\]\([^)\s]*\)")
 _MD_TAG = re.compile(r"<[^>]+>")
 _MD_ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
 _MD_BLOCK_MARK = re.compile(
@@ -41,6 +48,14 @@ def sha256_of_text(text: str) -> str:
     """The digest of a text artifact: its UTF-8 bytes, the one encoding the
     contract declares, so producer and check hash the same thing."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class ArtifactSource(Protocol):
+    """What the check reads artifacts from: anything that answers a digest with
+    the text it names, or ``None``. ``ArtifactStore`` is one; a project's own
+    manifest over files it already keeps is another."""
+
+    def get(self, sha256: str) -> str | None: ...
 
 
 class ArtifactStore:
@@ -57,6 +72,10 @@ class ArtifactStore:
 
     def path_of(self, sha256: str) -> pathlib.Path:
         return self.root / f"{sha256}.txt"
+
+    def has(self, sha256: str) -> bool:
+        """Whether a file of that name is there, whatever its bytes hash to."""
+        return self.path_of(sha256).is_file()
 
     def put(self, text: str) -> str:
         """Store the text once under its digest; returns the digest."""
@@ -138,46 +157,65 @@ class Resliced(NamedTuple):
     occurrences: int
 
 
-def reslice_quote(*, quote: str, artifact: str) -> Resliced | None:
+class FoldedText:
+    """An artifact folded once, for the many quotes a producer reslices from
+    one page or one transcript; the fold is the cost, the lookups are cheap."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.folded, self.offsets = norm_map(text)
+
+    def reslice(self, quote: str) -> Resliced | None:
+        folded_quote = fold(quote)
+        if not folded_quote:
+            return None
+        position = self.folded.find(folded_quote)
+        if position < 0:
+            return None
+        start = self.offsets[position]
+        end = self.offsets[position + len(folded_quote) - 1] + 1
+        return Resliced(
+            quote=self.text[start:end],
+            start=start,
+            end=end,
+            occurrences=self.folded.count(folded_quote),
+        )
+
+
+def reslice_quote(*, quote: str, artifact: str | FoldedText) -> Resliced | None:
     """The byte-exact slice of ``artifact`` that a quote from another rendering
     stands for, or ``None`` when the folded quote is not in the folded artifact.
 
     A producer stores ``Resliced.quote`` as ``quote`` and ``Resliced.start``
-    as ``quote_offset_char``, and the check passes on the first try.
+    as ``quote_offset_char``, and the check passes on the first try. Pass a
+    ``FoldedText`` to fold the artifact once for many quotes.
     """
-    folded_quote = fold(quote)
-    if not folded_quote:
-        return None
-    folded_artifact, offsets = norm_map(artifact)
-    position = folded_artifact.find(folded_quote)
-    if position < 0:
-        return None
-    start = offsets[position]
-    end = offsets[position + len(folded_quote) - 1] + 1
-    return Resliced(
-        quote=artifact[start:end],
-        start=start,
-        end=end,
-        occurrences=folded_artifact.count(folded_quote),
-    )
+    folded = artifact if isinstance(artifact, FoldedText) else FoldedText(artifact)
+    return folded.reslice(quote)
 
 
 def numbers_in(text: str) -> set[Decimal]:
     """Every number the text states, group separators removed.
 
-    A comma, period, space, or no-break space followed by exactly three digits
-    is read as grouping, so 1,234 and 1 234 and 1.234 are one number and the
-    columns of a table stay apart; a remaining period or comma is a decimal
-    mark, a remaining space a boundary. A heuristic for a row validator, with
-    a known limit: a decimal with exactly three fraction digits, 0.125, reads
-    as 125.
+    A number is one to three digits followed by groups of exactly three behind
+    a comma, period, space, no-break space, or narrow no-break space, with an
+    optional decimal part, else a plain run of digits with an optional decimal
+    part; a group never starts after a longer run, so a year before a count
+    stays two numbers and the columns of a table stay apart. A heuristic for
+    a row validator, with a known limit: a decimal with exactly three fraction
+    digits, 0.125, reads as 125.
     """
     numbers: set[Decimal] = set()
     for match in _NUMBER.finditer(text):
-        ungrouped = _GROUP_SEPARATOR.sub("", match.group(0))
-        for token in ungrouped.replace("\u00a0", " ").split(" "):
-            if _DECIMAL.match(token):
-                numbers.add(Decimal(token.replace(",", ".")))
+        token = match.group(0)
+        grouped = _GROUPED.match(token)
+        if grouped:
+            integer = "".join(char for char in grouped.group(0) if char.isdigit())
+            rest = token[grouped.end() :]
+            token = integer + ("." + rest[1:] if rest else "")
+        else:
+            token = token.replace(",", ".")
+        numbers.add(Decimal(token))
     return numbers
 
 
@@ -190,9 +228,11 @@ def value_in_quote(*, value_text: str, quote: str) -> bool:
 
 def markdown_plain(text: str) -> str:
     """A quote taken from markdown with the markdown taken out: images and
-    links keep their text, tags, escapes, block and inline marks go."""
+    links keep their text, a link's tail left by a quote cut inside it goes,
+    tags, escapes, block and inline marks go."""
     text = _MD_IMAGE.sub(r"\1", text)
     text = _MD_LINK.sub(r"\1", text)
+    text = _MD_LINK_TAIL.sub("", text)
     text = _MD_TAG.sub("", text)
     text = _MD_ESCAPE.sub(r"\1", text)
     text = _MD_BLOCK_MARK.sub("", text)
@@ -241,8 +281,10 @@ def squeeze(text: str) -> str:
 def quote_in_html(*, quote: str, raw_html: str, min_chars: int = 12) -> bool:
     """Whether a quote read from a markdown rendering is also in the page's
     visible text: a gate against a converter inventing words, never a proof.
-    A squeezed quote shorter than ``min_chars`` fails, since a few letters
-    match anywhere."""
+    ``min_chars`` counts the letters and digits of the folded quote, spaces
+    and punctuation excluded, a different measure from a length constraint
+    on the row schema's ``quote``; a quote below it fails, since a few
+    letters match anywhere."""
     needle = squeeze(fold(markdown_plain(quote)))
     if len(needle) < min_chars:
         return False
@@ -250,7 +292,9 @@ def quote_in_html(*, quote: str, raw_html: str, min_chars: int = 12) -> bool:
 
 
 __all__ = [
+    "ArtifactSource",
     "ArtifactStore",
+    "FoldedText",
     "Resliced",
     "fold",
     "html_text",
