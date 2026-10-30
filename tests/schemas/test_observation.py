@@ -140,7 +140,7 @@ class TestBackends:
                       sc.Observation):
             schema = arrow_schema_from_pydantic(model)
             assert "quote" in schema.names
-        assert len(arrow_schema_from_pydantic(sc.Observation)) == 22
+        assert len(arrow_schema_from_pydantic(sc.Observation)) == 23
 
     def test_json_schema_llm_contract(self):
         js = sc.Observation.model_json_schema()
@@ -168,3 +168,35 @@ class TestVerifyQuote:
 
     def test_no_match(self):
         assert sc.verify_quote(quote="$58.0 billion", source_text="was $57.0 billion.") is None
+
+
+class TestArtifactIdentity:
+    def test_artifact_sha256_optional_and_hex(self):
+        row = sc.Observation.model_validate(_good())
+        assert row.artifact_sha256 is None
+        digest = "c71cc2644bc9004a7863c4bcaf9be9812ef660a5548c7be95ed4c7952b8d597d"
+        assert sc.Observation.model_validate(_good(artifact_sha256=digest)).artifact_sha256 == digest
+        with pytest.raises(pyd.ValidationError):
+            sc.Observation.model_validate(_good(artifact_sha256="not-a-digest"))
+
+    def test_verify_quote_hint_uses_folding(self):
+        source = "The company\u2019s revenue \u2014 $57.0\u00a0billion."
+        assert sc.verify_quote(quote="revenue - $57.0 billion", source_text=source) == "normalized"
+        assert sc.verify_quote(quote="$57.0\u00a0billion", source_text=source) == "exact"
+        assert sc.verify_quote(quote="$58.0 billion", source_text=source) is None
+
+
+class TestQuoteStatus:
+    def test_statuses_are_closed(self):
+        ok = sc.QuoteStatus(ref_id="r", source_url="https://e.com", status="verified")
+        assert ok.occurrences is None
+        with pytest.raises(pyd.ValidationError):
+            sc.QuoteStatus(ref_id="r", source_url="https://e.com", status="maybe")
+        assert set(sc.QuoteStatus.model_json_schema()["properties"]) == {
+            "ref_id",
+            "source_url",
+            "status",
+            "hint",
+            "occurrences",
+            "message",
+        }

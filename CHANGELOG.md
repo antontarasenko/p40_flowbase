@@ -2,6 +2,13 @@
 
 ## Branch `main`
 
+- schemas: Add `artifact_sha256` on `ReferenceBase`, the content identity the check resolves by; `source_transcript` documented as the legacy locator and `quote_checked_at_utc` as deprecated
+- schemas: Add `QuoteStatus`, one row's verdict from `QuotesVerified.report`
+- helpers: Add `helpers/quotes.py`: `ArtifactStore`, `norm_map`, `fold`, `reslice_quote`, `numbers_in`, `value_in_quote`, `markdown_plain`, `html_text`, `squeeze`, `quote_in_html`
+- checks: `QuotesVerified` takes `store` or the 0.8.2 `resolver`, judges every row in `report` with four statuses and the occurrence count, `run` built on it; a resolved text that does not hash to the row's digest is missing
+- schemas: `verify_quote` reports `normalized` after the folding of `norm_map`, so the hint and `reslice_quote` agree
+- docs: Add `docs/quote_verification.md`, the contract and the producer pattern
+
 ## 0.8.2 (2026-09-26)
 
 - core: Add `links` on `DataObject` and `DataObjectVersion`, p40 `<root>/<handle>` addresses written as the `links` root key of `meta.json`

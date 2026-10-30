@@ -10,6 +10,7 @@ import unicodedata
 
 import pydantic as pyd
 
+from p40_flowbase.helpers.quotes import fold
 from p40_flowbase.schemas.base import SchemaBase
 
 REF_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]*$"
@@ -25,14 +26,16 @@ def verify_quote(*, quote: str, source_text: str) -> str | None:
     """Diagnostic matcher used by ``ck.QuotesVerified`` failure messages.
 
     The verification contract is binary: only ``"exact"`` (byte-identical
-    substring) verifies. ``"normalized"`` (matches after NFKC + whitespace
-    collapse) is reported on failure as a hint that the quote came from a
-    different rendering of the source and should be re-extracted from the
-    stored artifact. ``None``: no match at all.
+    substring) verifies. ``"normalized"`` (matches after the folding of
+    ``helpers.quotes.norm_map``: NFKC, dashes and quotes to ASCII, invisible
+    characters dropped, casefold, whitespace collapsed) is reported on failure
+    as a hint that the quote came from a different rendering of the source:
+    ``helpers.quotes.reslice_quote`` cuts the exact slice from the stored
+    artifact. ``None``: no match at all.
     """
     if quote in source_text:
         return "exact"
-    if normalize_text(quote) in normalize_text(source_text):
+    if fold(quote) in fold(source_text):
         return "normalized"
     return None
 
@@ -93,15 +96,31 @@ class ReferenceBase(SchemaBase):
         default=None,
         title="Source transcript",
         description=(
-            "Reference to the stored text version of the source used as "
-            "the verification artifact: the pinned canonical extraction "
-            "of a PDF/binary (or an OCR'd scan, or an AV transcript), "
-            "addressed as '<object_stem>.files/<relative_path>' or "
-            "another locator the project resolver understands. None = "
-            "the raw stored body of source_url is itself the "
-            "verification artifact (HTML, text, JSON sources)."
+            "Legacy locator of the verification artifact, read by the "
+            "resolver path of ck.QuotesVerified: the pinned text "
+            "extraction of a PDF/binary (or an OCR'd scan, or an AV "
+            "transcript), addressed as '<object_stem>.files/<relative_path>' "
+            "or another locator the project resolver understands. None = "
+            "the raw stored body of source_url is itself the artifact "
+            "(HTML, text, JSON sources). A row that carries "
+            "artifact_sha256 is resolved by that digest instead."
         ),
         examples=["sec_filings-main.files/260712_nvda/10q.pdftotext.txt"],
+    )
+    artifact_sha256: str | None = pyd.Field(
+        default=None,
+        title="Artifact sha256",
+        description=(
+            "The identity of the verification artifact: the sha256 hex "
+            "digest of its UTF-8 bytes, as helpers.quotes.ArtifactStore "
+            "names it. When set, ck.QuotesVerified resolves the artifact "
+            "by this digest, so a moved or re-fetched file is missing, "
+            "never silently different; a resolver that returns other "
+            "bytes for the row fails it. None = resolve by source_url and "
+            "source_transcript, the 0.8.2 path."
+        ),
+        pattern=r"^[0-9a-f]{64}$",
+        examples=["c71cc2644bc9004a7863c4bcaf9be9812ef660a5548c7be95ed4c7952b8d597d"],
     )
     quote: str = pyd.Field(
         title="Quote (literal)",
@@ -133,8 +152,10 @@ class ReferenceBase(SchemaBase):
             "Optional, 0-based character offset of the quote in the "
             "verification artifact: pins WHICH occurrence when the quote "
             "is not unique, and lets a reviewer pull surrounding "
-            "context. The end is derived (offset + len(quote)), never "
-            "stored. When set, verification also requires "
+            "context. The recommended anchor, written from "
+            "helpers.quotes.reslice_quote: a quote at an offset is never "
+            "ambiguous. The end is derived (offset + len(quote)), never "
+            "stored. When set, verification requires "
             "artifact[offset:offset+len(quote)] == quote."
         ),
         ge=0,
@@ -144,12 +165,72 @@ class ReferenceBase(SchemaBase):
         default=None,
         title="Quote checked at (UTC)",
         description=(
-            "When byte-identity of the quote against the stored source "
-            "was confirmed by the producer's verification call (normal "
-            "flow: extraction and verification run back to back as "
-            "independent calls). ck.QuotesVerified re-proves the claim "
-            "at make() regardless; None = producer never verified."
+            "Deprecated: when the producer's own verification call "
+            "confirmed byte-identity. ck.QuotesVerified re-proves the "
+            "claim at make() and ignores the stamp; kept for rows written "
+            "before 0.8.3. None = producer never verified."
         ),
+    )
+
+
+QUOTE_STATUSES = (
+    "verified",
+    "artifact_missing",
+    "quote_not_found",
+    "offset_mismatch",
+)
+
+
+class QuoteStatus(SchemaBase):
+    """One row's verdict from ``ck.QuotesVerified.report``: what the check
+    found, never raised, so a project stores the report as a ``Table``
+    beside its facts and a reader sees why each row stands or fails.
+    """
+
+    ref_id: str = pyd.Field(
+        title="Reference id",
+        description="The ref_id of the row judged.",
+        pattern=REF_ID_PATTERN,
+    )
+    source_url: str = pyd.Field(
+        title="Source URL",
+        description="The row's source_url, for the reader.",
+    )
+    status: str = pyd.Field(
+        title="Status",
+        description=(
+            "verified: the quote is the slice at its offset, or a substring "
+            "when no offset is stored. artifact_missing: no artifact for the "
+            "row, or bytes whose digest differs from artifact_sha256. "
+            "quote_not_found: the quote is nowhere in the artifact. "
+            "offset_mismatch: the quote is in the artifact but not at "
+            "quote_offset_char."
+        ),
+        pattern="^(" + "|".join(QUOTE_STATUSES) + ")$",
+    )
+    hint: str | None = pyd.Field(
+        default=None,
+        title="Hint",
+        description=(
+            "On quote_not_found: 'normalized' when the quote matches after "
+            "folding, a different rendering to reslice from the artifact."
+        ),
+    )
+    occurrences: int | None = pyd.Field(
+        default=None,
+        title="Occurrences",
+        description=(
+            "How many times the quote occurs in the artifact, counted at "
+            "check time: a review signal, a phrase found many times being "
+            "boilerplate rather than evidence. None when the artifact is "
+            "missing."
+        ),
+        ge=0,
+    )
+    message: str | None = pyd.Field(
+        default=None,
+        title="Message",
+        description="Detail for a status other than verified.",
     )
 
 

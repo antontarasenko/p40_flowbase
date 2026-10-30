@@ -1,7 +1,8 @@
 """Tests for ``ck.QuotesVerified``: structural quote re-verification.
 
 Builds a real ``Table`` whose ``row_schema`` is ``sc.Observation``,
-materializes rows, and runs the check against a dict-backed resolver.
+materializes rows, and runs the check against a dict-backed resolver, the
+0.8.2 path, and against a content-addressed ``ArtifactStore``.
 """
 
 from __future__ import annotations
@@ -24,7 +25,10 @@ from p40_flowbase.core.base import (
     DataObject,
     DataObjectVersion,
 )
-from p40_flowbase.helpers import arrow_schema_from_pydantic
+from p40_flowbase.helpers import (
+    arrow_schema_from_pydantic,
+    quotes,
+)
 
 
 class _V(Enum):
@@ -149,3 +153,105 @@ class TestQuotesVerified:
         _QTChecked.rows = [_row(quote="fabricated quote")]
         with pytest.raises(ck.CheckFailedError):
             _QTChecked(_V.V1).make(replace=True)
+
+
+def _store_for(root: Any) -> Any:
+    return lambda obj: quotes.ArtifactStore(root)
+
+
+class TestQuotesVerifiedStore:
+    def test_exactly_one_of_store_and_resolver(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            ck.QuotesVerified()
+        with pytest.raises(ValueError, match="exactly one"):
+            ck.QuotesVerified(store=_store_for("x"), resolver=_resolver)
+
+    def test_green_by_digest_and_offset(self, test_local_data, tmp_path):
+        store = quotes.ArtifactStore(tmp_path)
+        sha = store.put(BODY)
+        resliced = quotes.reslice_quote(quote="revenue  was <B>$57.0 billion", artifact=BODY)
+        assert resliced is not None
+        obj = _made(
+            [
+                _row(
+                    artifact_sha256=sha,
+                    quote=resliced.quote,
+                    quote_offset_char=resliced.start,
+                )
+            ],
+            test_local_data,
+        )
+        check = ck.QuotesVerified(store=_store_for(tmp_path))
+        check.run(obj)
+        [status] = check.report(obj)
+        assert status.status == "verified"
+        assert status.occurrences == 1
+        assert status.hint is None
+
+    def test_statuses_in_the_report(self, test_local_data, tmp_path):
+        store = quotes.ArtifactStore(tmp_path)
+        sha = store.put(BODY)
+        offset = BODY.index("Revenue was")
+        obj = _made(
+            [
+                _row(ref_id="ok", artifact_sha256=sha, quote_offset_char=offset),
+                _row(ref_id="unanchored", artifact_sha256=sha),
+                _row(ref_id="moved", artifact_sha256=sha, quote_offset_char=offset + 1),
+                _row(ref_id="fabricated", artifact_sha256=sha, quote="Revenue was $58"),
+                _row(
+                    ref_id="rendering",
+                    artifact_sha256=sha,
+                    quote="Revenue was  <b>$57.0 billion</b>",
+                ),
+                _row(ref_id="gone", artifact_sha256="0" * 64),
+                _row(ref_id="legacy_row"),
+            ],
+            test_local_data,
+        )
+        report = ck.QuotesVerified(store=_store_for(tmp_path)).report(obj)
+        by_id = {s.ref_id: s for s in report}
+        assert by_id["ok"].status == "verified"
+        assert by_id["unanchored"].status == "verified"
+        assert by_id["moved"].status == "offset_mismatch"
+        assert by_id["fabricated"].status == "quote_not_found"
+        assert by_id["fabricated"].hint is None
+        assert by_id["rendering"].status == "quote_not_found"
+        assert by_id["rendering"].hint == "normalized"
+        assert "reslice" in (by_id["rendering"].message or "")
+        assert by_id["gone"].status == "artifact_missing"
+        assert by_id["legacy_row"].status == "artifact_missing"
+        assert all(s.source_url for s in report)
+        rows = [sc.QuoteStatus.model_validate(s.model_dump()) for s in report]
+        assert len(rows) == 7
+
+    def test_run_names_the_status(self, test_local_data, tmp_path):
+        store = quotes.ArtifactStore(tmp_path)
+        sha = store.put(BODY)
+        obj = _made(
+            [_row(artifact_sha256=sha, quote_offset_char=BODY.index("was"))],
+            test_local_data,
+        )
+        with pytest.raises(ck.CheckFailedError, match="offset_mismatch"):
+            ck.QuotesVerified(store=_store_for(tmp_path)).run(obj)
+
+    def test_refetched_artifact_is_missing_not_verified(self, test_local_data, tmp_path):
+        store = quotes.ArtifactStore(tmp_path)
+        sha = store.put(BODY)
+        obj = _made([_row(artifact_sha256=sha)], test_local_data)
+        check = ck.QuotesVerified(store=_store_for(tmp_path))
+        check.run(obj)
+        store.path_of(sha).write_bytes(BODY.replace("62%", "63%").encode("utf-8"))
+        with pytest.raises(ck.CheckFailedError, match="artifact_missing"):
+            check.run(obj)
+        ck.QuotesVerified(store=_store_for(tmp_path), on_missing="skip").run(obj)
+
+    def test_resolver_path_checks_a_digest_when_the_row_has_one(self, test_local_data):
+        obj = _made(
+            [
+                _row(artifact_sha256=quotes.sha256_of_text(BODY)),
+                _row(ref_id="stale", artifact_sha256="0" * 64),
+            ],
+            test_local_data,
+        )
+        report = ck.QuotesVerified(resolver=_resolver).report(obj)
+        assert [s.status for s in report] == ["verified", "artifact_missing"]

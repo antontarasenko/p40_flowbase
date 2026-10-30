@@ -51,6 +51,14 @@ from p40_flowbase.core.composite import (
 from p40_flowbase.core.formats import CompositeFormat
 from p40_flowbase.core.requests_mixin import RequestsDBMixin
 from p40_flowbase.core.table import Table
+from p40_flowbase.helpers.quotes import (
+    ArtifactStore,
+    sha256_of_text,
+)
+from p40_flowbase.schemas.observation import (
+    QuoteStatus,
+    verify_quote,
+)
 
 if TYPE_CHECKING:
     import pydantic as pyd
@@ -410,91 +418,177 @@ class MaxFailureRate(BaseCheck):
 
 
 class QuotesVerified(BaseCheck):
-    """Re-prove byte-identity of every quote against its stored source.
+    """Re-prove byte-identity of every quote against its stored artifact.
 
     Structural verification for Tables whose ``row_schema`` derives from
-    ``schemas.ReferenceBase``: instead of trusting the producer's
-    ``quote_checked_at_utc`` stamp, the check re-reads each row's
-    verification artifact via ``resolver`` and requires ``quote`` to be
-    a byte-identical substring of it (and, when ``quote_offset_char`` is
-    set, to sit exactly at that offset). A quote that resolves but does
-    not match always fails, with a diagnostic hint when it would match
-    after NFKC/whitespace normalization (a different rendering: the
-    producer should re-extract from the stored artifact).
+    ``schemas.ReferenceBase``: instead of trusting the producer's stamp, the
+    check re-reads each row's verification artifact and requires ``quote``
+    to be a byte-identical substring of it, sitting at ``quote_offset_char``
+    when that is set. The artifact is found by content when the row carries
+    ``artifact_sha256``, through a ``helpers.quotes.ArtifactStore``, else
+    through the project's ``resolver`` as in 0.8.2. The contract is binary;
+    ``report`` says per row why it stands or fails, and ``run`` raises on
+    the first row that fails.
 
-    :param resolver: Maps ``(obj, source_url, source_transcript)`` to
-        the verification artifact text: the raw stored body when
-        ``source_transcript`` is ``None`` (an ``HTTPDB``
-        ``response_body_text``, a Composite file), else the referenced
-        transcript. ``None`` = source not stored.
-    :param on_missing: Policy for rows whose source is not stored:
-        ``"fail"`` (default) fails on the first missing source;
-        ``"skip"`` verifies only resolvable rows; a float in (0, 1]
-        requires at least that fraction of ALL rows to be verified.
+    :param store: Maps the checked object to the ``ArtifactStore`` holding
+        its artifacts, ``lambda obj: ArtifactStore(<a Composite's
+        .files>/artifacts)``; rows resolve by ``artifact_sha256``.
+    :param resolver: Maps ``(obj, source_url, source_transcript)`` to the
+        artifact text, or ``None`` when the source is not stored: the raw
+        stored body when ``source_transcript`` is ``None``, else the
+        referenced transcript. Rows with an ``artifact_sha256`` that the
+        returned text does not hash to fail as missing.
+    :param on_missing: Policy for rows without an artifact: ``"fail"``
+        (default) fails on the first; ``"skip"`` verifies the rest; a float
+        in (0, 1] requires at least that fraction of ALL rows verified.
     """
 
     def __init__(
         self,
         *,
-        resolver: Callable[["DataObject", str, str | None], str | None],
+        store: Callable[["DataObject"], ArtifactStore] | None = None,
+        resolver: Callable[["DataObject", str, str | None], str | None]
+        | None = None,
         on_missing: str | float = "fail",
     ) -> None:
+        if (store is None) == (resolver is None):
+            message = "QuotesVerified takes exactly one of store and resolver"
+            raise ValueError(message)
         if isinstance(on_missing, str):
             if on_missing not in ("fail", "skip"):
-                raise ValueError("on_missing must be 'fail', 'skip', or a fraction")
+                message = "on_missing must be 'fail', 'skip', or a fraction"
+                raise ValueError(message)
         elif not 0 < on_missing <= 1:
-            raise ValueError("on_missing fraction must be in (0, 1]")
+            message = "on_missing fraction must be in (0, 1]"
+            raise ValueError(message)
+        self.store = store
         self.resolver = resolver
         self.on_missing = on_missing
         self.name = f"quotes_verified(on_missing={on_missing})"
 
+    def report(self, obj: "DataObject") -> list[QuoteStatus]:
+        """Every row's verdict, nothing raised: the table a project stores
+        beside its facts."""
+        self._require(obj, Table)
+        columns = obj.sql().columns  # type: ignore[attr-defined]
+        query = (
+            "SELECT ref_id, source_url, source_transcript, quote, "
+            "quote_offset_char, artifact_sha256 FROM t"
+            if "artifact_sha256" in columns
+            else "SELECT ref_id, source_url, source_transcript, quote, "
+            "quote_offset_char, NULL FROM t"
+        )
+        rows = obj.sql(query).fetchall()  # type: ignore[attr-defined]
+        store = self.store(obj) if self.store is not None else None
+        artifacts: dict[tuple[str, str | None, str | None], str | None] = {}
+        statuses: list[QuoteStatus] = []
+        for ref_id, url, transcript, quote, offset, sha in rows:
+            key = (url, transcript, sha)
+            if key not in artifacts:
+                if store is not None:
+                    text = store.get(sha) if sha else None
+                elif self.resolver is not None:
+                    text = self.resolver(obj, url, transcript)
+                    if text is not None and sha and sha256_of_text(text) != sha:
+                        text = None
+                else:
+                    text = None
+                artifacts[key] = text
+            statuses.append(
+                self._judge(
+                    ref_id=ref_id,
+                    url=url,
+                    quote=quote,
+                    offset=offset,
+                    artifact=artifacts[key],
+                )
+            )
+        return statuses
+
+    @staticmethod
+    def _judge(
+        *,
+        ref_id: str,
+        url: str,
+        quote: str,
+        offset: int | None,
+        artifact: str | None,
+    ) -> QuoteStatus:
+        if artifact is None:
+            return QuoteStatus(
+                ref_id=ref_id,
+                source_url=url,
+                status="artifact_missing",
+                message="no stored source for the row, or bytes whose digest "
+                "differs from artifact_sha256",
+            )
+        occurrences = artifact.count(quote)
+        if offset is not None and artifact[offset : offset + len(quote)] == quote:
+            return QuoteStatus(
+                ref_id=ref_id,
+                source_url=url,
+                status="verified",
+                occurrences=occurrences,
+            )
+        if occurrences:
+            if offset is None:
+                return QuoteStatus(
+                    ref_id=ref_id,
+                    source_url=url,
+                    status="verified",
+                    occurrences=occurrences,
+                )
+            return QuoteStatus(
+                ref_id=ref_id,
+                source_url=url,
+                status="offset_mismatch",
+                occurrences=occurrences,
+                message=f"quote matches the artifact but not at "
+                f"quote_offset_char={offset}: {quote[:120]!r}",
+            )
+        tier = verify_quote(quote=quote, source_text=artifact)
+        hint = "normalized" if tier == "normalized" else None
+        detail = (
+            "; matches after normalization: the quote came from a different "
+            "rendering, reslice it from the stored artifact with "
+            "helpers.quotes.reslice_quote"
+            if hint
+            else ""
+        )
+        return QuoteStatus(
+            ref_id=ref_id,
+            source_url=url,
+            status="quote_not_found",
+            hint=hint,
+            occurrences=0,
+            message=f"quote is not a byte-identical substring of the stored "
+            f"artifact{detail}: {quote[:120]!r}",
+        )
+
     @override
     def run(self, obj: "DataObject") -> None:
-        from p40_flowbase.schemas.observation import verify_quote
-
-        self._require(obj, Table)
-        rows = obj.sql(  # type: ignore[attr-defined]
-            "SELECT source_url, source_transcript, quote, quote_offset_char FROM t"
-        ).fetchall()
-        artifacts: dict[tuple[str, str | None], str | None] = {}
+        statuses = self.report(obj)
         missing_cnt = 0
-        for url, transcript, quote, offset in rows:
-            key = (url, transcript)
-            if key not in artifacts:
-                artifacts[key] = self.resolver(obj, url, transcript)
-            artifact = artifacts[key]
-            if artifact is None:
+        for status in statuses:
+            if status.status == "artifact_missing":
                 if self.on_missing == "fail":
                     raise CheckFailedError(
-                        f"{self.name}: no stored source for {url!r} "
-                        f"(transcript={transcript!r})"
+                        f"{self.name}: artifact_missing for {status.ref_id!r} "
+                        f"({status.source_url!r}): {status.message}"
                     )
                 missing_cnt += 1
                 continue
-            if quote not in artifact:
-                tier = verify_quote(quote=quote, source_text=artifact)
-                hint = (
-                    " (matches after normalization: the quote came from a "
-                    "different rendering; re-extract it from the stored "
-                    "artifact)"
-                    if tier == "normalized"
-                    else ""
-                )
+            if status.status != "verified":
                 raise CheckFailedError(
-                    f"{self.name}: quote is not a byte-identical substring "
-                    f"of the stored source {url!r}{hint}: {quote[:120]!r}"
+                    f"{self.name}: {status.status} for {status.ref_id!r} "
+                    f"({status.source_url!r}): {status.message}"
                 )
-            if offset is not None and artifact[offset : offset + len(quote)] != quote:
-                raise CheckFailedError(
-                    f"{self.name}: quote matches the source but not at "
-                    f"quote_offset_char={offset} for {url!r}: {quote[:120]!r}"
-                )
-        if isinstance(self.on_missing, float) and rows:
-            verified_frac = (len(rows) - missing_cnt) / len(rows)
+        if isinstance(self.on_missing, float) and statuses:
+            verified_frac = (len(statuses) - missing_cnt) / len(statuses)
             if verified_frac < self.on_missing:
                 raise CheckFailedError(
                     f"{self.name}: only {verified_frac:.2%} of rows have a "
-                    f"stored source; required {self.on_missing:.2%}"
+                    f"stored artifact; required {self.on_missing:.2%}"
                 )
 
 

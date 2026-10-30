@@ -15,6 +15,7 @@ pip install p40_flowbase
 ## Documentation
 
 - [`examples/p40_weather/`](examples/p40_weather/)
+- [`docs/quote_verification.md`](docs/quote_verification.md)
 - [`CHANGELOG.md`](CHANGELOG.md)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
