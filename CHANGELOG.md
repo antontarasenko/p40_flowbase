@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.8.3 (2026-10-30)
+
 - schemas: Add `artifact_sha256` on `ReferenceBase`, the content identity the check resolves by; `source_transcript` documented as the legacy locator and `quote_checked_at_utc` as deprecated
 - schemas: Add `QuoteStatus`, one row's verdict from `QuotesVerified.report`
 - helpers: Add `helpers/quotes.py`: `ArtifactStore`, `norm_map`, `fold`, `reslice_quote`, `numbers_in`, `value_in_quote`, `markdown_plain`, `html_text`, `squeeze`, `quote_in_html`
