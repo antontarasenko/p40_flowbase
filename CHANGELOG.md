@@ -2,6 +2,8 @@
 
 ## Branch `main`
 
+## 0.8.4 (2026-10-30)
+
 - helpers: `numbers_in` reads a group as one to three digits followed by groups of three, so a year before a count stays two numbers and a number before a comma is kept
 - helpers: `FoldedText`, an artifact folded once for many reslices; `reslice_quote` takes it or a string
 - helpers: `ArtifactSource`, any object answering a digest with text, accepted by `QuotesVerified(store=...)`; `ArtifactStore.has`
