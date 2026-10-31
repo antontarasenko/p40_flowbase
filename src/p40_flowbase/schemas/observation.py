@@ -236,6 +236,39 @@ class QuoteStatus(SchemaBase):
     )
 
 
+FIELD_STATUSES = ("verified", "field_missing")
+
+
+class FieldStatus(SchemaBase):
+    """One field of one row judged by ``ck.FieldsInQuote.report``: whether
+    the field's text occurs in the row's quote after folding, never raised,
+    so a project stores the report beside its facts."""
+
+    ref_id: str = pyd.Field(
+        title="Reference id",
+        description="The ref_id of the row judged.",
+        pattern=REF_ID_PATTERN,
+    )
+    field: str = pyd.Field(
+        title="Field",
+        description="The column judged.",
+    )
+    status: str = pyd.Field(
+        title="Status",
+        description=(
+            "verified: the field's text occurs in the quote after the folding "
+            "of helpers.quotes.norm_map. field_missing: it does not, the value "
+            "came from outside the evidence span."
+        ),
+        pattern="^(" + "|".join(FIELD_STATUSES) + ")$",
+    )
+    message: str | None = pyd.Field(
+        default=None,
+        title="Message",
+        description="Detail for a status other than verified.",
+    )
+
+
 class MetricObservation(ReferenceBase):
     """Evidence core + subject: what is measured, and of whom.
 

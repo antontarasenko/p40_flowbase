@@ -2,6 +2,12 @@
 
 ## Branch `main`
 
+## 0.8.5 (2026-10-31)
+
+- checks, schemas: `FieldsInQuote`, a row's text fields proven against its own quote after folding, one `FieldStatus` per field from `report`; with `QuotesVerified` a proof of the fields against the page
+- helpers: `excerpt`, the artifact around a quote at its offset or its first occurrence after folding, for graders
+- docs: fields, excerpts, and the patterns that stay in the project: excluded rows, labeled classifier cases, transcript attribution
+
 ## 0.8.4 (2026-10-30)
 
 - helpers: `numbers_in` reads a group as one to three digits followed by groups of three, so a year before a count stays two numbers and a number before a comma is kept

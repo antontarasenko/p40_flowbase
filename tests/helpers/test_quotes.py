@@ -174,3 +174,33 @@ class TestHtmlGate:
         assert not quotes.quote_in_html(quote="Revenue was $58", raw_html=self.HTML)
         assert not quotes.quote_in_html(quote="Results", raw_html=self.HTML)
         assert quotes.quote_in_html(quote="Results", raw_html=self.HTML, min_chars=4)
+
+
+class TestExcerpt:
+    QUOTE = "Revenue was <b>$57.0 billion</b>"
+
+    def test_slices_at_the_offset_when_it_holds(self):
+        second = ARTIFACT.index(self.QUOTE, 10)
+        out = quotes.excerpt(
+            quote=self.QUOTE, artifact=ARTIFACT, offset=second, before=5, after=4
+        )
+        assert out == ARTIFACT[second - 5 : second + len(self.QUOTE) + 4]
+
+    def test_falls_back_to_the_first_occurrence_after_folding(self):
+        out = quotes.excerpt(
+            quote="revenue  was <b>$57.0 billion</b>",
+            artifact=quotes.FoldedText(ARTIFACT),
+            offset=9999,
+            before=0,
+            after=0,
+        )
+        assert out == self.QUOTE
+
+    def test_clamps_to_the_artifact(self):
+        out = quotes.excerpt(
+            quote="Revenue was", artifact=ARTIFACT, before=100, after=0
+        )
+        assert out == "Revenue was"
+
+    def test_none_when_the_quote_is_absent(self):
+        assert quotes.excerpt(quote="nowhere", artifact=ARTIFACT) is None

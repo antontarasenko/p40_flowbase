@@ -35,7 +35,10 @@ async check to a sync-only object raises ``NotImplementedError`` at
 first run.
 """
 
-from collections.abc import Callable
+from collections.abc import (
+    Callable,
+    Sequence,
+)
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -56,9 +59,11 @@ from p40_flowbase.core.table import Table
 from p40_flowbase.helpers.quotes import (
     ArtifactSource,
     ArtifactStore,
+    fold,
     sha256_of_text,
 )
 from p40_flowbase.schemas.observation import (
+    FieldStatus,
     QuoteStatus,
     verify_quote,
 )
@@ -614,6 +619,78 @@ class QuotesVerified(BaseCheck):
                 )
 
 
+class FieldsInQuote(BaseCheck):
+    """Prove a row's structured fields against the row's own quote.
+
+    For Tables on ``schemas.ReferenceBase`` whose ``quote`` is the evidence
+    span the fields were read from, a product card, a table row, a
+    sentence: each listed column's text must occur in the quote after the
+    folding of ``helpers.quotes.norm_map``, so a price or a size lifted
+    from another card fails at ``make()``. ``QuotesVerified`` proves the
+    quote against the artifact; this check proves the fields against the
+    quote and reads the table alone, so the two compose into a proof of
+    the fields against the page. A field is the text as the page shows it;
+    a parsed value lives in another column. A null or empty field states
+    nothing and is passed over, ``NoNulls`` being the check for that.
+
+    :param fields: The columns to prove, text columns of the row schema.
+    """
+
+    def __init__(self, *, fields: Sequence[str]) -> None:
+        if not fields:
+            message = "FieldsInQuote takes at least one field"
+            raise ValueError(message)
+        self.fields = tuple(fields)
+        self.name = f"fields_in_quote({', '.join(self.fields)})"
+
+    def report(self, obj: "DataObject") -> list[FieldStatus]:
+        """Every present field of every row judged, nothing raised."""
+        self._require(obj, Table)
+        columns = obj.sql().columns  # type: ignore[attr-defined]
+        absent = [field for field in self.fields if field not in columns]
+        if absent:
+            message = f"{self.name}: the table has no column {', '.join(absent)}"
+            raise CheckFailedError(message)
+        selected = ", ".join(f'"{field}"' for field in self.fields)
+        rows = obj.sql(f"SELECT ref_id, quote, {selected} FROM t").fetchall()  # type: ignore[attr-defined]  # noqa: S608
+        statuses: list[FieldStatus] = []
+        for ref_id, quote, *values in rows:
+            folded_quote = fold(quote)
+            for field, value in zip(self.fields, values, strict=True):
+                if value is None:
+                    continue
+                text = str(value)
+                needle = fold(text)
+                if not needle:
+                    continue
+                if needle in folded_quote:
+                    statuses.append(
+                        FieldStatus(ref_id=ref_id, field=field, status="verified")
+                    )
+                else:
+                    statuses.append(
+                        FieldStatus(
+                            ref_id=ref_id,
+                            field=field,
+                            status="field_missing",
+                            message=f"{field} {text[:80]!r} is not in the quote "
+                            "after folding: the value came from outside the "
+                            "evidence span",
+                        )
+                    )
+        return statuses
+
+    @override
+    def run(self, obj: "DataObject") -> None:
+        for status in self.report(obj):
+            if status.status != "verified":
+                message = (
+                    f"{self.name}: {status.status} for {status.ref_id!r}: "
+                    f"{status.message}"
+                )
+                raise CheckFailedError(message)
+
+
 # Public alias: users write ``checks: tuple[fb.Check, ...] = (...)``
 Check = BaseCheck
 
@@ -623,6 +700,7 @@ __all__ = [
     "BaseCheck",
     "Check",
     "CheckFailedError",
+    "FieldsInQuote",
     "MaxFailureRate",
     "MinFileSize",
     "MinFiles",

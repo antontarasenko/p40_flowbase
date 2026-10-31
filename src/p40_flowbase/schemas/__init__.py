@@ -25,6 +25,7 @@ from p40_flowbase.schemas.base import SchemaBase
 from p40_flowbase.schemas.observation import (
     ENTITY_ID_SYSTEM_PATTERN,
     REF_ID_PATTERN,
+    FieldStatus,
     InstantObservation,
     MetricObservation,
     Observation,
@@ -38,6 +39,7 @@ from p40_flowbase.schemas.observation import (
 __all__ = [
     "ENTITY_ID_SYSTEM_PATTERN",
     "REF_ID_PATTERN",
+    "FieldStatus",
     "InstantObservation",
     "MetricObservation",
     "Observation",

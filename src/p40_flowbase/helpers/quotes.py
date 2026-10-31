@@ -194,6 +194,30 @@ def reslice_quote(*, quote: str, artifact: str | FoldedText) -> Resliced | None:
     return folded.reslice(quote)
 
 
+def excerpt(
+    *,
+    quote: str,
+    artifact: str | FoldedText,
+    offset: int | None = None,
+    before: int = 600,
+    after: int = 1800,
+) -> str | None:
+    """The artifact around a quote, for a grader who needs the context the
+    row's values sit in: the quote at ``offset`` when the slice there is the
+    quote, else its first occurrence after folding, with ``before``
+    characters ahead of it and ``after`` behind, clamped to the artifact;
+    ``None`` when the quote is not in the artifact."""
+    text = artifact.text if isinstance(artifact, FoldedText) else artifact
+    if offset is not None and text[offset : offset + len(quote)] == quote:
+        start, end = offset, offset + len(quote)
+    else:
+        sliced = reslice_quote(quote=quote, artifact=artifact)
+        if sliced is None:
+            return None
+        start, end = sliced.start, sliced.end
+    return text[max(0, start - before) : end + after]
+
+
 def numbers_in(text: str) -> set[Decimal]:
     """Every number the text states, group separators removed.
 
@@ -296,6 +320,7 @@ __all__ = [
     "ArtifactStore",
     "FoldedText",
     "Resliced",
+    "excerpt",
     "fold",
     "html_text",
     "markdown_plain",
